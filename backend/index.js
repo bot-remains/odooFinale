@@ -8,6 +8,13 @@ import dotenv from 'dotenv';
 // Import database and routes
 import connectDB from './src/config/database.js';
 import authRoutes from './src/routes/auth.js';
+import venueManagementRoutes from './src/routes/venueManagement.js';
+import publicRoutes from './src/routes/public.js';
+import bookingRoutes from './src/routes/bookings.js';
+import reviewRoutes from './src/routes/reviews.js';
+import adminRoutes from './src/routes/admin.js';
+import notificationRoutes from './src/routes/notifications.js';
+import paymentRoutes from './src/routes/payments.js';
 import emailService from './src/services/emailService.js';
 import User from './src/models/User.js';
 import Venue from './src/models/Venue.js';
@@ -15,6 +22,7 @@ import Court from './src/models/Court.js';
 import Booking from './src/models/Booking.js';
 import Review from './src/models/Review.js';
 import TimeSlot from './src/models/TimeSlot.js';
+import { initializeNewTables } from './src/utils/databaseTables.js';
 import { apiLimiter } from './src/middleware/auth.js';
 
 // Load environment variables
@@ -51,6 +59,13 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/venue-management', venueManagementRoutes);
+app.use('/api/public', publicRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Health check endpoint
 app.get('/health', async (req, res) => {
@@ -84,9 +99,13 @@ app.get('/', (req, res) => {
     endpoints: {
       health: '/health',
       auth: '/api/auth',
-      venues: '/api/venues (coming soon)',
-      courts: '/api/courts (coming soon)',
-      bookings: '/api/bookings (coming soon)',
+      venueManagement: '/api/venue-management',
+      public: '/api/public',
+      bookings: '/api/bookings',
+      reviews: '/api/reviews',
+      admin: '/api/admin',
+      notifications: '/api/notifications',
+      payments: '/api/payments',
     },
   });
 });
@@ -135,6 +154,9 @@ const startServer = async () => {
     await Booking.createTable();
     await Review.createTable();
     await TimeSlot.createTable();
+
+    // Initialize new tables for extended functionality
+    await initializeNewTables();
 
     // Start server
     app.listen(PORT, HOST, () => {
