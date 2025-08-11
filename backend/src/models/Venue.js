@@ -1,4 +1,4 @@
-import { query } from '../config/database.js';
+import prisma from '../config/prisma.js';
 
 class Venue {
   constructor(venueData) {
@@ -10,68 +10,24 @@ class Venue {
     this.amenities = venueData.amenities;
     this.photos = venueData.photos;
     this.rating = venueData.rating;
-    this.totalReviews = venueData.total_reviews;
-    this.ownerId = venueData.owner_id;
-    this.isApproved = venueData.is_approved;
-    this.contactEmail = venueData.contact_email;
-    this.contactPhone = venueData.contact_phone;
-    this.rejectionReason = venueData.rejection_reason;
-    this.rejectedAt = venueData.rejected_at;
-    this.rejectedBy = venueData.rejected_by;
-    this.approvedAt = venueData.approved_at;
-    this.approvedBy = venueData.approved_by;
-    this.createdAt = venueData.created_at;
-    this.updatedAt = venueData.updated_at;
-  }
+    this.totalReviews = venueData.totalReviews;
+    this.ownerId = venueData.ownerId;
+    this.isApproved = venueData.isApproved;
+    this.contactEmail = venueData.contactEmail;
+    this.contactPhone = venueData.contactPhone;
+    this.rejectionReason = venueData.rejectionReason;
+    this.rejectedAt = venueData.rejectedAt;
+    this.rejectedBy = venueData.rejectedBy;
+    this.approvedAt = venueData.approvedAt;
+    this.approvedBy = venueData.approvedBy;
+    this.createdAt = venueData.createdAt;
+    this.updatedAt = venueData.updatedAt;
 
-  // Create venues table
-  static async createTable() {
-    const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS venues (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        address TEXT NOT NULL,
-        location VARCHAR(255) NOT NULL,
-        amenities TEXT[], -- Array of amenities
-        photos TEXT[], -- Array of photo URLs
-        rating DECIMAL(2,1) DEFAULT 0.0,
-        total_reviews INTEGER DEFAULT 0,
-        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        is_approved BOOLEAN DEFAULT false,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      -- Create indexes
-      CREATE INDEX IF NOT EXISTS idx_venues_owner_id ON venues(owner_id);
-      CREATE INDEX IF NOT EXISTS idx_venues_approved ON venues(is_approved);
-      CREATE INDEX IF NOT EXISTS idx_venues_location ON venues(location);
-      CREATE INDEX IF NOT EXISTS idx_venues_rating ON venues(rating);
-
-      -- Create trigger to update updated_at
-      CREATE OR REPLACE FUNCTION update_venues_updated_at()
-      RETURNS TRIGGER AS $$
-      BEGIN
-          NEW.updated_at = CURRENT_TIMESTAMP;
-          RETURN NEW;
-      END;
-      $$ language 'plpgsql';
-
-      DROP TRIGGER IF EXISTS update_venues_updated_at ON venues;
-      CREATE TRIGGER update_venues_updated_at
-          BEFORE UPDATE ON venues
-          FOR EACH ROW
-          EXECUTE FUNCTION update_venues_updated_at();
-    `;
-
-    try {
-      await query(createTableQuery);
-      console.log('✅ Venues table created/verified successfully');
-    } catch (error) {
-      console.error('❌ Error creating venues table:', error.message);
-      throw error;
-    }
+    // Additional computed fields
+    this.ownerName = venueData.owner?.name;
+    this.ownerEmail = venueData.owner?.email;
+    this.startingPrice = venueData.startingPrice;
+    this.availableSports = venueData.availableSports;
   }
 
   // Create a new venue
@@ -84,174 +40,391 @@ class Venue {
       amenities = [],
       photos = [],
       ownerId,
+      contactEmail,
+      contactPhone,
     } = venueData;
 
-    const insertQuery = `
-      INSERT INTO venues (name, description, address, location, amenities, photos, owner_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-    `;
+    const venue = await prisma.venue.create({
+      data: {
+        name,
+        description,
+        address,
+        location,
+        amenities,
+        photos,
+        ownerId,
+        contactEmail,
+        contactPhone,
+      },
+      include: {
+        owner: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
 
-    const result = await query(insertQuery, [
-      name,
-      description,
-      address,
-      location,
-      amenities,
-      photos,
-      ownerId,
-    ]);
-    return new Venue(result.rows[0]);
+    return new Venue(venue);
   }
 
   // Find venue by ID
   static async findById(id) {
-    const selectQuery = `
-      SELECT v.*, u.name as owner_name, u.email as owner_email
-      FROM venues v
-      LEFT JOIN users u ON v.owner_id = u.id
-      WHERE v.id = $1
-    `;
+    const venue = await prisma.venue.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        owner: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        courts: {
+          select: {
+            id: true,
+            name: true,
+            sportType: true,
+            pricePerHour: true,
+            isActive: true,
+          },
+        },
+        reviews: {
+          select: {
+            id: true,
+            rating: true,
+            comment: true,
+            createdAt: true,
+            user: {
+              select: {
+                name: true,
+                avatar: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 10,
+        },
+      },
+    });
 
-    const result = await query(selectQuery, [id]);
-    return result.rows.length > 0 ? new Venue(result.rows[0]) : null;
+    return venue ? new Venue(venue) : null;
   }
 
   // Get all approved venues with filters
   static async findAll(filters = {}, limit = 20, offset = 0) {
-    let whereClause = 'WHERE v.is_approved = true';
-    const params = [];
-    let paramCount = 1;
+    const where = {
+      isApproved: true,
+      ...filters,
+    };
 
-    // Apply filters
+    // Handle sport type filter
     if (filters.sportType) {
-      whereClause += ` AND EXISTS (
-        SELECT 1 FROM courts c WHERE c.venue_id = v.id AND c.sport_type = $${paramCount}
-      )`;
-      params.push(filters.sportType);
-      paramCount++;
+      where.courts = {
+        some: {
+          sportType: filters.sportType,
+          isActive: true,
+        },
+      };
+      delete where.sportType;
     }
 
+    // Handle location filter
     if (filters.location) {
-      whereClause += ` AND v.location ILIKE $${paramCount}`;
-      params.push(`%${filters.location}%`);
-      paramCount++;
+      where.location = {
+        contains: filters.location,
+        mode: 'insensitive',
+      };
     }
 
+    // Handle minimum rating filter
     if (filters.minRating) {
-      whereClause += ` AND v.rating >= $${paramCount}`;
-      params.push(filters.minRating);
-      paramCount++;
+      where.rating = {
+        gte: parseFloat(filters.minRating),
+      };
     }
 
+    // Handle search filter
     if (filters.search) {
-      whereClause += ` AND (v.name ILIKE $${paramCount} OR v.description ILIKE $${paramCount})`;
-      params.push(`%${filters.search}%`);
-      paramCount++;
+      where.OR = [
+        {
+          name: {
+            contains: filters.search,
+            mode: 'insensitive',
+          },
+        },
+        {
+          description: {
+            contains: filters.search,
+            mode: 'insensitive',
+          },
+        },
+      ];
+      delete where.search;
     }
 
-    params.push(limit, offset);
+    const venues = await prisma.venue.findMany({
+      where,
+      include: {
+        courts: {
+          where: { isActive: true },
+          select: {
+            sportType: true,
+            pricePerHour: true,
+          },
+        },
+      },
+      orderBy: [{ rating: 'desc' }, { createdAt: 'desc' }],
+      take: limit,
+      skip: offset,
+    });
 
-    const selectQuery = `
-      SELECT v.*,
-             MIN(c.price_per_hour) as starting_price,
-             ARRAY_AGG(DISTINCT c.sport_type) as available_sports
-      FROM venues v
-      LEFT JOIN courts c ON v.id = c.venue_id
-      ${whereClause}
-      GROUP BY v.id
-      ORDER BY v.rating DESC, v.created_at DESC
-      LIMIT $${paramCount} OFFSET $${paramCount + 1}
-    `;
+    return venues.map((venue) => {
+      // Calculate starting price and available sports
+      const startingPrice =
+        venue.courts.length > 0
+          ? Math.min(...venue.courts.map((c) => parseFloat(c.pricePerHour)))
+          : null;
 
-    const result = await query(selectQuery, params);
-    return result.rows.map((row) => new Venue(row));
+      const availableSports = [...new Set(venue.courts.map((c) => c.sportType))];
+
+      return new Venue({
+        ...venue,
+        startingPrice,
+        availableSports,
+      });
+    });
   }
 
   // Get venues by owner
-  static async findByOwner(ownerId) {
-    const selectQuery = `
-      SELECT * FROM venues
-      WHERE owner_id = $1
-      ORDER BY created_at DESC
-    `;
+  static async findByOwner(ownerId, includeDetails = false) {
+    const include = includeDetails
+      ? {
+          courts: {
+            select: {
+              id: true,
+              name: true,
+              sportType: true,
+              pricePerHour: true,
+              isActive: true,
+            },
+          },
+          bookings: {
+            where: {
+              status: 'confirmed',
+            },
+            select: {
+              id: true,
+              totalAmount: true,
+              createdAt: true,
+            },
+          },
+        }
+      : undefined;
 
-    const result = await query(selectQuery, [ownerId]);
-    return result.rows.map((row) => new Venue(row));
+    const venues = await prisma.venue.findMany({
+      where: { ownerId: parseInt(ownerId) },
+      include,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return venues.map((venue) => new Venue(venue));
+  }
+
+  // Get venues for admin review (pending approval)
+  static async findPendingApproval(limit = 20, offset = 0) {
+    const venues = await prisma.venue.findMany({
+      where: {
+        isApproved: false,
+        rejectedAt: null,
+      },
+      include: {
+        owner: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        courts: {
+          select: {
+            name: true,
+            sportType: true,
+            pricePerHour: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+      take: limit,
+      skip: offset,
+    });
+
+    return venues.map((venue) => new Venue(venue));
+  }
+
+  // Get all venues for admin
+  static async findAllForAdmin(filters = {}, limit = 20, offset = 0) {
+    const where = { ...filters };
+
+    const venues = await prisma.venue.findMany({
+      where,
+      include: {
+        owner: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        courts: {
+          select: {
+            id: true,
+            name: true,
+            sportType: true,
+            pricePerHour: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+      skip: offset,
+    });
+
+    return venues.map((venue) => new Venue(venue));
   }
 
   // Update venue
   async update(updateData) {
-    const fields = [];
-    const values = [];
-    let paramCount = 1;
+    const prismaUpdateData = {};
 
     Object.keys(updateData).forEach((key) => {
       if (updateData[key] !== undefined) {
-        const dbField = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        fields.push(`${dbField} = $${paramCount}`);
-        values.push(updateData[key]);
-        paramCount++;
+        prismaUpdateData[key] = updateData[key];
       }
     });
 
-    if (fields.length === 0) {
+    if (Object.keys(prismaUpdateData).length === 0) {
       throw new Error('No fields to update');
     }
 
-    values.push(this.id);
+    const updatedVenue = await prisma.venue.update({
+      where: { id: this.id },
+      data: prismaUpdateData,
+      include: {
+        owner: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
 
-    const updateQuery = `
-      UPDATE venues
-      SET ${fields.join(', ')}
-      WHERE id = $${paramCount}
-      RETURNING *
-    `;
-
-    const result = await query(updateQuery, values);
-    return new Venue(result.rows[0]);
+    return new Venue(updatedVenue);
   }
 
-  // Approve venue (admin only)
-  async approve() {
-    const updateQuery = `
-      UPDATE venues
-      SET is_approved = true
-      WHERE id = $1
-      RETURNING *
-    `;
+  // Approve venue
+  async approve(adminId) {
+    const updatedVenue = await prisma.venue.update({
+      where: { id: this.id },
+      data: {
+        isApproved: true,
+        approvedBy: adminId,
+        approvedAt: new Date(),
+        rejectedBy: null,
+        rejectedAt: null,
+        rejectionReason: null,
+      },
+      include: {
+        owner: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
 
-    const result = await query(updateQuery, [this.id]);
-    return new Venue(result.rows[0]);
+    return new Venue(updatedVenue);
   }
 
-  // Update rating
+  // Reject venue
+  async reject(adminId, rejectionReason) {
+    const updatedVenue = await prisma.venue.update({
+      where: { id: this.id },
+      data: {
+        isApproved: false,
+        rejectedBy: adminId,
+        rejectedAt: new Date(),
+        rejectionReason,
+        approvedBy: null,
+        approvedAt: null,
+      },
+      include: {
+        owner: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    return new Venue(updatedVenue);
+  }
+
+  // Update rating (called when reviews change)
   async updateRating() {
-    const updateQuery = `
-      UPDATE venues
-      SET rating = (
-        SELECT COALESCE(AVG(rating), 0)
-        FROM reviews
-        WHERE venue_id = $1
-      ),
-      total_reviews = (
-        SELECT COUNT(*)
-        FROM reviews
-        WHERE venue_id = $1
-      )
-      WHERE id = $1
-      RETURNING *
-    `;
+    const stats = await prisma.review.aggregate({
+      where: { venueId: this.id },
+      _avg: { rating: true },
+      _count: { id: true },
+    });
 
-    const result = await query(updateQuery, [this.id]);
-    return new Venue(result.rows[0]);
+    const updatedVenue = await prisma.venue.update({
+      where: { id: this.id },
+      data: {
+        rating: stats._avg.rating || 0,
+        totalReviews: stats._count.id || 0,
+      },
+    });
+
+    return new Venue(updatedVenue);
   }
 
   // Delete venue
   async delete() {
-    const deleteQuery = `DELETE FROM venues WHERE id = $1 RETURNING id`;
-    const result = await query(deleteQuery, [this.id]);
-    return result.rows.length > 0;
+    const result = await prisma.venue.delete({
+      where: { id: this.id },
+      select: { id: true },
+    });
+
+    return !!result;
+  }
+
+  // Get venue statistics
+  static async getStatistics(filters = {}) {
+    const where = { ...filters };
+
+    const [total, approved, pending, rejected] = await Promise.all([
+      prisma.venue.count({ where }),
+      prisma.venue.count({ where: { ...where, isApproved: true } }),
+      prisma.venue.count({ where: { ...where, isApproved: false, rejectedAt: null } }),
+      prisma.venue.count({ where: { ...where, rejectedAt: { not: null } } }),
+    ]);
+
+    return {
+      total,
+      approved,
+      pending,
+      rejected,
+    };
   }
 
   // Convert to JSON
@@ -268,8 +441,19 @@ class Venue {
       totalReviews: this.totalReviews || 0,
       ownerId: this.ownerId,
       isApproved: this.isApproved,
+      contactEmail: this.contactEmail,
+      contactPhone: this.contactPhone,
+      rejectionReason: this.rejectionReason,
+      rejectedAt: this.rejectedAt,
+      rejectedBy: this.rejectedBy,
+      approvedAt: this.approvedAt,
+      approvedBy: this.approvedBy,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
+      ownerName: this.ownerName,
+      ownerEmail: this.ownerEmail,
+      startingPrice: this.startingPrice,
+      availableSports: this.availableSports,
     };
   }
 }

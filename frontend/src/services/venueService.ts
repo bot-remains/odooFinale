@@ -112,58 +112,73 @@ const venueManagementApi = {
     await api.delete(`/venue-management/venues/${venueId}`);
   },
 
-  getCourts: async (venueId?: number): Promise<Court[]> => {
-    const params = venueId ? { venueId } : {};
+  getCourts: async (venueId: number): Promise<Court[]> => {
     const response = await api.get<ApiResponse<Court[]>>(
-      "/venue-management/courts",
-      { params }
+      `/venue-management/venues/${venueId}/courts`
     );
     return response.data.data!;
   },
 
-  createCourt: async (courtData: CreateCourtRequest): Promise<Court> => {
+  createCourt: async (
+    venueId: number,
+    courtData: CreateCourtRequest
+  ): Promise<Court> => {
     const response = await api.post<ApiResponse<Court>>(
-      "/venue-management/courts",
+      `/venue-management/venues/${venueId}/courts`,
       courtData
     );
     return response.data.data!;
   },
 
   updateCourt: async (
+    venueId: number,
     courtId: number,
     courtData: Partial<CreateCourtRequest>
   ): Promise<Court> => {
     const response = await api.put<ApiResponse<Court>>(
-      `/venue-management/courts/${courtId}`,
+      `/venue-management/venues/${venueId}/courts/${courtId}`,
       courtData
     );
     return response.data.data!;
   },
 
-  deleteCourt: async (courtId: number): Promise<void> => {
-    await api.delete(`/venue-management/courts/${courtId}`);
+  deleteCourt: async (venueId: number, courtId: number): Promise<void> => {
+    await api.delete(`/venue-management/venues/${venueId}/courts/${courtId}`);
   },
 
-  blockTimeSlot: async (data: BlockTimeSlotRequest): Promise<TimeSlot> => {
-    const response = await api.post<ApiResponse<TimeSlot>>(
-      "/venue-management/time-slots/block",
+  getBlockedSlots: async (
+    venueId: number,
+    courtId: number,
+    dayOfWeek?: number
+  ): Promise<TimeSlot[]> => {
+    const params = dayOfWeek !== undefined ? { dayOfWeek } : {};
+    const response = await api.get<ApiResponse<TimeSlot[]>>(
+      `/venue-management/venues/${venueId}/courts/${courtId}/blocked-slots`,
+      { params }
+    );
+    return response.data.data!;
+  },
+
+  blockTimeSlots: async (
+    venueId: number,
+    courtId: number,
+    data: { slotIds: number[]; reason?: string }
+  ): Promise<void> => {
+    await api.post(
+      `/venue-management/venues/${venueId}/courts/${courtId}/block-slots`,
       data
     );
-    return response.data.data!;
   },
 
-  unblockTimeSlot: async (slotId: number): Promise<void> => {
-    await api.delete(`/venue-management/time-slots/block/${slotId}`);
-  },
-
-  getTimeSlots: async (courtId: number, date: string): Promise<TimeSlot[]> => {
-    const response = await api.get<ApiResponse<TimeSlot[]>>(
-      `/venue-management/time-slots`,
-      {
-        params: { courtId, date },
-      }
+  unblockTimeSlots: async (
+    venueId: number,
+    courtId: number,
+    data: { slotIds: number[] }
+  ): Promise<void> => {
+    await api.post(
+      `/venue-management/venues/${venueId}/courts/${courtId}/unblock-slots`,
+      data
     );
-    return response.data.data!;
   },
 };
 
@@ -308,10 +323,11 @@ export const useDeleteVenue = () => {
   });
 };
 
-export const useMyCourts = (venueId?: number) => {
+export const useMyCourts = (venueId: number) => {
   return useQuery({
     queryKey: ["venueManagement", "courts", venueId],
     queryFn: () => venueManagementApi.getCourts(venueId),
+    enabled: !!venueId,
     staleTime: 5 * 60 * 1000,
   });
 };
@@ -320,10 +336,16 @@ export const useCreateCourt = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: venueManagementApi.createCourt,
+    mutationFn: ({
+      venueId,
+      data,
+    }: {
+      venueId: number;
+      data: CreateCourtRequest;
+    }) => venueManagementApi.createCourt(venueId, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
-        queryKey: ["venueManagement", "courts"],
+        queryKey: ["venueManagement", "courts", variables.venueId],
       });
       queryClient.invalidateQueries({
         queryKey: ["venues", "details", variables.venueId],
@@ -341,18 +363,20 @@ export const useUpdateCourt = () => {
 
   return useMutation({
     mutationFn: ({
+      venueId,
       courtId,
       data,
     }: {
+      venueId: number;
       courtId: number;
       data: Partial<CreateCourtRequest>;
-    }) => venueManagementApi.updateCourt(courtId, data),
-    onSuccess: (data) => {
+    }) => venueManagementApi.updateCourt(venueId, courtId, data),
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
-        queryKey: ["venueManagement", "courts"],
+        queryKey: ["venueManagement", "courts", variables.venueId],
       });
       queryClient.invalidateQueries({
-        queryKey: ["venues", "details", data.venueId],
+        queryKey: ["venues", "details", variables.venueId],
       });
     },
     onError: (error) => {
@@ -366,10 +390,11 @@ export const useDeleteCourt = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: venueManagementApi.deleteCourt,
-    onSuccess: () => {
+    mutationFn: ({ venueId, courtId }: { venueId: number; courtId: number }) =>
+      venueManagementApi.deleteCourt(venueId, courtId),
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
-        queryKey: ["venueManagement", "courts"],
+        queryKey: ["venueManagement", "courts", variables.venueId],
       });
       queryClient.invalidateQueries({ queryKey: ["venues"] });
     },
@@ -380,14 +405,41 @@ export const useDeleteCourt = () => {
   });
 };
 
-export const useBlockTimeSlot = () => {
+export const useBlockedSlots = (
+  venueId: number,
+  courtId: number,
+  dayOfWeek?: number
+) => {
+  return useQuery({
+    queryKey: ["venueManagement", "blockedSlots", venueId, courtId, dayOfWeek],
+    queryFn: () =>
+      venueManagementApi.getBlockedSlots(venueId, courtId, dayOfWeek),
+    enabled: !!venueId && !!courtId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
+};
+
+export const useBlockTimeSlots = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: venueManagementApi.blockTimeSlot,
+    mutationFn: ({
+      venueId,
+      courtId,
+      data,
+    }: {
+      venueId: number;
+      courtId: number;
+      data: { slotIds: number[]; reason?: string };
+    }) => venueManagementApi.blockTimeSlots(venueId, courtId, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
-        queryKey: ["venueManagement", "timeSlots", variables.courtId],
+        queryKey: [
+          "venueManagement",
+          "blockedSlots",
+          variables.venueId,
+          variables.courtId,
+        ],
       });
       queryClient.invalidateQueries({ queryKey: ["venues", "details"] });
     },
@@ -398,14 +450,27 @@ export const useBlockTimeSlot = () => {
   });
 };
 
-export const useUnblockTimeSlot = () => {
+export const useUnblockTimeSlots = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: venueManagementApi.unblockTimeSlot,
-    onSuccess: () => {
+    mutationFn: ({
+      venueId,
+      courtId,
+      data,
+    }: {
+      venueId: number;
+      courtId: number;
+      data: { slotIds: number[] };
+    }) => venueManagementApi.unblockTimeSlots(venueId, courtId, data),
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
-        queryKey: ["venueManagement", "timeSlots"],
+        queryKey: [
+          "venueManagement",
+          "blockedSlots",
+          variables.venueId,
+          variables.courtId,
+        ],
       });
       queryClient.invalidateQueries({ queryKey: ["venues", "details"] });
     },
@@ -413,14 +478,5 @@ export const useUnblockTimeSlot = () => {
       const apiError = handleApiError(error);
       throw apiError;
     },
-  });
-};
-
-export const useTimeSlots = (courtId: number, date: string) => {
-  return useQuery({
-    queryKey: ["venueManagement", "timeSlots", courtId, date],
-    queryFn: () => venueManagementApi.getTimeSlots(courtId, date),
-    enabled: !!courtId && !!date,
-    staleTime: 2 * 60 * 1000, // 2 minutes
   });
 };

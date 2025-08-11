@@ -1,4 +1,5 @@
 import Booking from '../models/Booking.js';
+import prisma from '../config/prisma.js';
 
 // Get bookings for venue owner's venues
 export const getBookings = async (req, res) => {
@@ -15,65 +16,75 @@ export const getBookings = async (req, res) => {
       offset = 0,
     } = req.query;
 
-    const { query } = await import('../config/database.js');
-
-    let whereClause = 'WHERE v.owner_id = $1';
-    const params = [ownerId];
-    let paramCount = 2;
+    // Build where conditions
+    const whereConditions = {
+      venue: {
+        ownerId: ownerId,
+      },
+    };
 
     if (status) {
-      whereClause += ` AND b.status = $${paramCount}`;
-      params.push(status);
-      paramCount++;
+      whereConditions.status = status;
     }
 
     if (venueId) {
-      whereClause += ` AND v.id = $${paramCount}`;
-      params.push(venueId);
-      paramCount++;
+      whereConditions.venueId = parseInt(venueId);
     }
 
     if (courtId) {
-      whereClause += ` AND c.id = $${paramCount}`;
-      params.push(courtId);
-      paramCount++;
+      whereConditions.courtId = parseInt(courtId);
     }
 
     if (date) {
-      whereClause += ` AND b.booking_date = $${paramCount}`;
-      params.push(date);
-      paramCount++;
+      whereConditions.bookingDate = new Date(date);
     } else if (startDate && endDate) {
-      whereClause += ` AND b.booking_date BETWEEN $${paramCount} AND $${paramCount + 1}`;
-      params.push(startDate, endDate);
-      paramCount += 2;
+      whereConditions.bookingDate = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      };
     }
 
-    params.push(limit, offset);
+    const bookings = await prisma.booking.findMany({
+      where: whereConditions,
+      include: {
+        court: {
+          select: {
+            name: true,
+            sportType: true,
+          },
+        },
+        venue: {
+          select: {
+            name: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: [{ bookingDate: 'desc' }, { startTime: 'desc' }],
+      take: parseInt(limit),
+      skip: parseInt(offset),
+    });
 
-    const bookingsQuery = `
-      SELECT
-        b.*,
-        c.name as court_name,
-        c.sport_type,
-        v.name as venue_name,
-        u.name as user_name,
-        u.email as user_email,
-        u.id as user_id
-      FROM bookings b
-      JOIN courts c ON b.court_id = c.id
-      JOIN venues v ON c.venue_id = v.id
-      JOIN users u ON b.user_id = u.id
-      ${whereClause}
-      ORDER BY b.booking_date DESC, b.start_time DESC
-      LIMIT $${paramCount} OFFSET $${paramCount + 1}
-    `;
-
-    const result = await query(bookingsQuery, params);
+    // Transform to match expected format
+    const transformedBookings = bookings.map((booking) => ({
+      ...booking,
+      court_name: booking.court.name,
+      sport_type: booking.court.sportType,
+      venue_name: booking.venue.name,
+      user_name: booking.user.name,
+      user_email: booking.user.email,
+      user_id: booking.user.id,
+    }));
 
     res.json({
       success: true,
-      data: result.rows,
+      data: transformedBookings,
     });
   } catch (error) {
     console.error('Get bookings error:', error);
@@ -98,40 +109,48 @@ export const updateBookingStatus = async (req, res) => {
       });
     }
 
-    const booking = await Booking.findById(bookingId);
+    // Find booking with ownership verification
+    const booking = await prisma.booking.findFirst({
+      where: {
+        id: parseInt(bookingId),
+        venue: {
+          ownerId: req.user.id,
+        },
+      },
+      include: {
+        court: true,
+        venue: true,
+        user: true,
+      },
+    });
+
     if (!booking) {
       return res.status(404).json({
         success: false,
-        message: 'Booking not found',
+        message: 'Booking not found or access denied',
       });
     }
 
-    // Verify ownership through venue
-    const { query } = await import('../config/database.js');
-    const ownershipQuery = `
-      SELECT v.owner_id
-      FROM venues v
-      JOIN courts c ON v.id = c.venue_id
-      WHERE c.id = $1
-    `;
-    const ownershipResult = await query(ownershipQuery, [booking.courtId]);
-
-    if (ownershipResult.rows.length === 0 || ownershipResult.rows[0].owner_id !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-
-    const updatedBooking = await booking.update({
-      status,
-      cancelReason: status === 'cancelled' ? reason : null,
+    // Update booking
+    const updatedBooking = await prisma.booking.update({
+      where: { id: parseInt(bookingId) },
+      data: {
+        status,
+        cancellationReason: status === 'cancelled' ? reason : null,
+        confirmedAt: status === 'confirmed' ? new Date() : null,
+        cancelledAt: status === 'cancelled' ? new Date() : null,
+      },
+      include: {
+        court: true,
+        venue: true,
+        user: true,
+      },
     });
 
     res.json({
       success: true,
       message: `Booking ${status} successfully`,
-      data: updatedBooking.toJSON(),
+      data: updatedBooking,
     });
   } catch (error) {
     console.error('Update booking status error:', error);

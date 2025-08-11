@@ -1,77 +1,154 @@
 import Venue from '../models/Venue.js';
 import Court from '../models/Court.js';
+import Booking from '../models/Booking.js';
+import prisma from '../config/prisma.js';
 import { validationResult } from 'express-validator';
 
 // Helper function to get venue statistics
 const getVenueStats = async (ownerId) => {
-  const { query } = await import('../config/database.js');
+  try {
+    // Get venue counts
+    const totalVenues = await prisma.venue.count({
+      where: { ownerId: ownerId },
+    });
 
-  const statsQuery = `
-    SELECT
-      COUNT(DISTINCT v.id) as total_venues,
-      COUNT(DISTINCT c.id) as total_courts,
-      COUNT(DISTINCT CASE WHEN v.is_approved = true THEN v.id END) as approved_venues,
-      COUNT(DISTINCT CASE WHEN v.is_approved = false THEN v.id END) as pending_venues,
-      COUNT(DISTINCT CASE WHEN c.is_active = true THEN c.id END) as active_courts,
-      COUNT(DISTINCT b.id) as total_bookings,
-      COUNT(DISTINCT CASE WHEN b.status = 'confirmed' THEN b.id END) as confirmed_bookings,
-      COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.total_amount END), 0) as total_revenue
-    FROM venues v
-    LEFT JOIN courts c ON v.id = c.venue_id
-    LEFT JOIN bookings b ON c.id = b.court_id
-    WHERE v.owner_id = $1
-  `;
+    const approvedVenues = await prisma.venue.count({
+      where: {
+        ownerId: ownerId,
+        isApproved: true,
+      },
+    });
 
-  const result = await query(statsQuery, [ownerId]);
-  return result.rows[0];
+    const pendingVenues = await prisma.venue.count({
+      where: {
+        ownerId: ownerId,
+        isApproved: false,
+      },
+    });
+
+    // Get court counts
+    const totalCourts = await prisma.court.count({
+      where: {
+        venue: { ownerId: ownerId },
+      },
+    });
+
+    const activeCourts = await prisma.court.count({
+      where: {
+        venue: { ownerId: ownerId },
+        isActive: true,
+      },
+    });
+
+    // Get booking statistics
+    const bookingStats = await prisma.booking.aggregate({
+      where: {
+        venue: { ownerId: ownerId },
+      },
+      _count: {
+        id: true,
+      },
+      _sum: {
+        totalAmount: true,
+      },
+    });
+
+    const confirmedBookings = await prisma.booking.count({
+      where: {
+        venue: { ownerId: ownerId },
+        status: 'confirmed',
+      },
+    });
+
+    return {
+      total_venues: totalVenues,
+      total_courts: totalCourts,
+      approved_venues: approvedVenues,
+      pending_venues: pendingVenues,
+      active_courts: activeCourts,
+      total_bookings: bookingStats._count.id || 0,
+      confirmed_bookings: confirmedBookings,
+      total_revenue: bookingStats._sum.totalAmount || 0,
+    };
+  } catch (error) {
+    console.error('Error getting venue stats:', error);
+    throw error;
+  }
 };
 
 // Helper function to get recent bookings
 const getRecentBookings = async (ownerId, limit = 10) => {
-  const { query } = await import('../config/database.js');
+  try {
+    const bookings = await prisma.booking.findMany({
+      where: {
+        venue: { ownerId: ownerId },
+      },
+      include: {
+        court: {
+          select: {
+            name: true,
+            sportType: true,
+          },
+        },
+        venue: {
+          select: {
+            name: true,
+          },
+        },
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: parseInt(limit),
+    });
 
-  const bookingsQuery = `
-    SELECT
-      b.*,
-      c.name as court_name,
-      c.sport_type,
-      v.name as venue_name,
-      u.name as user_name,
-      u.email as user_email
-    FROM bookings b
-    JOIN courts c ON b.court_id = c.id
-    JOIN venues v ON c.venue_id = v.id
-    JOIN users u ON b.user_id = u.id
-    WHERE v.owner_id = $1
-    ORDER BY b.created_at DESC
-    LIMIT $2
-  `;
-
-  const result = await query(bookingsQuery, [ownerId, limit]);
-  return result.rows;
+    // Transform to match expected format
+    return bookings.map((booking) => ({
+      ...booking,
+      court_name: booking.court.name,
+      sport_type: booking.court.sportType,
+      venue_name: booking.venue.name,
+      user_name: booking.user.name,
+      user_email: booking.user.email,
+    }));
+  } catch (error) {
+    console.error('Error getting recent bookings:', error);
+    throw error;
+  }
 };
 
-// Helper function to get revenue data
+// Helper function to get revenue data (simplified)
 const getRevenueData = async (ownerId) => {
-  const { query } = await import('../config/database.js');
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const revenueQuery = `
-    SELECT
-      DATE_TRUNC('day', b.booking_date) as date,
-      COUNT(*) as bookings_count,
-      SUM(b.total_amount) as daily_revenue
-    FROM bookings b
-    JOIN courts c ON b.court_id = c.id
-    JOIN venues v ON c.venue_id = v.id
-    WHERE v.owner_id = $1
-      AND b.status = 'confirmed'
-      AND b.booking_date >= CURRENT_DATE - INTERVAL '30 days'
-    GROUP BY DATE_TRUNC('day', b.booking_date)
-    ORDER BY date DESC
-  `;
+    // Get total revenue and count for last 30 days
+    const revenueStats = await prisma.booking.aggregate({
+      where: {
+        venue: { ownerId: ownerId },
+        status: 'confirmed',
+        bookingDate: { gte: thirtyDaysAgo },
+      },
+      _sum: { totalAmount: true },
+      _count: { id: true },
+    });
 
-  const result = await query(revenueQuery, [ownerId]);
-  return result.rows;
+    return {
+      total_revenue: revenueStats._sum.totalAmount || 0,
+      total_bookings: revenueStats._count.id || 0,
+      period: '30 days',
+    };
+  } catch (error) {
+    console.error('Error getting revenue data:', error);
+    throw error;
+  }
 };
 
 // Get dashboard statistics

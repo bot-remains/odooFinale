@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import rateLimit from 'express-rate-limit';
+// import rateLimit from 'express-rate-limit'; // Rate limiting removed
 
 // JWT Authentication Middleware
 export const authMiddleware = (req, res, next) => {
@@ -28,30 +28,6 @@ export const authMiddleware = (req, res, next) => {
 // Legacy alias for backward compatibility
 export const authenticateToken = authMiddleware;
 export const authenticate = authMiddleware;
-
-// Rate limiting middleware
-export const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
-  message: {
-    success: false,
-    message: 'Too many requests from this IP, please try again later.',
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// Strict rate limiting for auth endpoints
-export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,
-  message: {
-    success: false,
-    message: 'Too many authentication attempts, please try again later.',
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 
 // Role-based access control
 export const requireRole = (roles) => {

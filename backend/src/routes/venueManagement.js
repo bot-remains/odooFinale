@@ -231,9 +231,10 @@ router.get(
   [
     param('venueId').isInt({ min: 1 }).withMessage('Invalid venue ID'),
     param('courtId').isInt({ min: 1 }).withMessage('Invalid court ID'),
-    query('date').optional().isDate().withMessage('Date must be in YYYY-MM-DD format'),
-    query('startDate').optional().isDate().withMessage('Start date must be in YYYY-MM-DD format'),
-    query('endDate').optional().isDate().withMessage('End date must be in YYYY-MM-DD format'),
+    query('dayOfWeek')
+      .optional()
+      .isInt({ min: 0, max: 6 })
+      .withMessage('Day of week must be 0-6 (Sunday-Saturday)'),
   ],
   getBlockedSlots
 );
@@ -243,15 +244,10 @@ router.post(
   [
     param('venueId').isInt({ min: 1 }).withMessage('Invalid venue ID'),
     param('courtId').isInt({ min: 1 }).withMessage('Invalid court ID'),
-    body('slots').isArray({ min: 1 }).withMessage('Slots must be a non-empty array'),
-    body('slots.*.date').isDate().withMessage('Each slot must have a valid date'),
-    body('slots.*.startTime')
-      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
-      .withMessage('Start time must be in HH:MM format'),
-    body('slots.*.endTime')
-      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
-      .withMessage('End time must be in HH:MM format'),
+    body('slotIds').isArray({ min: 1 }).withMessage('Slot IDs must be a non-empty array'),
+    body('slotIds.*').isInt({ min: 1 }).withMessage('Each slot ID must be a valid integer'),
     body('reason')
+      .optional()
       .trim()
       .isLength({ min: 3, max: 255 })
       .withMessage('Reason must be between 3 and 255 characters'),
@@ -264,14 +260,8 @@ router.post(
   [
     param('venueId').isInt({ min: 1 }).withMessage('Invalid venue ID'),
     param('courtId').isInt({ min: 1 }).withMessage('Invalid court ID'),
-    body('slots').isArray({ min: 1 }).withMessage('Slots must be a non-empty array'),
-    body('slots.*.date').isDate().withMessage('Each slot must have a valid date'),
-    body('slots.*.startTime')
-      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
-      .withMessage('Start time must be in HH:MM format'),
-    body('slots.*.endTime')
-      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
-      .withMessage('End time must be in HH:MM format'),
+    body('slotIds').isArray({ min: 1 }).withMessage('Slot IDs must be a non-empty array'),
+    body('slotIds.*').isInt({ min: 1 }).withMessage('Each slot ID must be a valid integer'),
   ],
   unblockTimeSlots
 );

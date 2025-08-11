@@ -9,12 +9,9 @@ import {
   changePassword,
 } from '../controllers/authController.js';
 import { userValidation, handleValidationErrors } from '../middleware/validation.js';
-import { authenticateToken, authLimiter } from '../middleware/auth.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
-
-// Apply auth limiter to all auth routes
-router.use(authLimiter);
 
 // Public routes
 router.post('/register', userValidation.register, handleValidationErrors, register);

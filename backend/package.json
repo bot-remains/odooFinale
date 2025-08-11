@@ -11,6 +11,10 @@
     "dev": "nodemon index.js",
     "init-db": "node scripts/init-db.js",
     "test:email-otp": "node test-email-otp.js",
+    "migrate": "node src/utils/migrateToPrisma.js",
+    "prisma:generate": "npx prisma generate",
+    "prisma:push": "npx prisma db push",
+    "prisma:studio": "npx prisma studio",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
     "format": "prettier --write .",
@@ -43,6 +47,7 @@
     "concurrently": "^9.2.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "prisma": "^6.13.0"
   }
 }

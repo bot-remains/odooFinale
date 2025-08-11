@@ -6,7 +6,7 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 
 // Import database and routes
-import connectDB from './src/config/database.js';
+import { connectDB } from './src/config/prisma.js';
 import authRoutes from './src/routes/auth.js';
 import venueManagementRoutes from './src/routes/venueManagement.js';
 import publicRoutes from './src/routes/public.js';
@@ -16,21 +16,13 @@ import adminRoutes from './src/routes/admin.js';
 import notificationRoutes from './src/routes/notifications.js';
 import paymentRoutes from './src/routes/payments.js';
 import emailService from './src/services/emailService.js';
-import User from './src/models/User.js';
-import Venue from './src/models/Venue.js';
-import Court from './src/models/Court.js';
-import Booking from './src/models/Booking.js';
-import Review from './src/models/Review.js';
-import TimeSlot from './src/models/TimeSlot.js';
-import { initializeNewTables } from './src/utils/databaseTables.js';
-import { apiLimiter } from './src/middleware/auth.js';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
 
-// Trust proxy for rate limiting behind reverse proxy
+// Trust proxy for reverse proxy support
 app.set('trust proxy', 1);
 
 // Security middleware
@@ -47,6 +39,10 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
+<<<<<<< HEAD
+=======
+
+>>>>>>> b98a7f5 (migrated to prisma)
 // Compression middleware
 app.use(compression());
 
@@ -138,7 +134,7 @@ const HOST = process.env.HOST || 'localhost';
 // Initialize database and start server
 const startServer = async () => {
   try {
-    // Connect to database
+    // Connect to database with Prisma
     await connectDB();
 
     try {
@@ -147,22 +143,14 @@ const startServer = async () => {
       console.log('⚠️ Email service will be tested when first used');
     }
 
-    // Create tables if they don't exist (basic setup)
-    await User.createTable();
-    await Venue.createTable();
-    await Court.createTable();
-    await Booking.createTable();
-    await Review.createTable();
-    await TimeSlot.createTable();
-
-    // Initialize new tables for extended functionality
-    await initializeNewTables();
+    console.log('✅ All services initialized successfully');
 
     // Start server
     app.listen(PORT, HOST, () => {
       console.log(`🚀 QuickCourt API Server is running on http://${HOST}:${PORT}`);
       console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🌐 CORS enabled for: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+      console.log('🎯 Using Prisma ORM for database operations');
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error.message);

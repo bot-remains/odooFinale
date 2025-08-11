@@ -1,226 +1,440 @@
-import { query } from '../config/database.js';
+import prisma from '../config/prisma.js';
 
 class Court {
   constructor(courtData) {
     this.id = courtData.id;
-    this.venueId = courtData.venue_id;
+    this.venueId = courtData.venueId;
     this.name = courtData.name;
-    this.sportType = courtData.sport_type;
-    this.pricePerHour = courtData.price_per_hour;
-    this.operatingHours = courtData.operating_hours;
-    this.isActive = courtData.is_active;
-    this.createdAt = courtData.created_at;
-    this.updatedAt = courtData.updated_at;
-  }
+    this.sportType = courtData.sportType;
+    this.pricePerHour = courtData.pricePerHour;
+    this.photos = courtData.photos;
+    this.amenities = courtData.amenities;
+    this.isActive = courtData.isActive;
+    this.createdAt = courtData.createdAt;
+    this.updatedAt = courtData.updatedAt;
 
-  // Create courts table
-  static async createTable() {
-    const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS courts (
-        id SERIAL PRIMARY KEY,
-        venue_id INTEGER REFERENCES venues(id) ON DELETE CASCADE,
-        name VARCHAR(255) NOT NULL,
-        sport_type VARCHAR(100) NOT NULL,
-        price_per_hour DECIMAL(10,2) NOT NULL,
-        operating_hours JSONB DEFAULT '{"start": "06:00", "end": "22:00"}',
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      -- Create indexes
-      CREATE INDEX IF NOT EXISTS idx_courts_venue_id ON courts(venue_id);
-      CREATE INDEX IF NOT EXISTS idx_courts_sport_type ON courts(sport_type);
-      CREATE INDEX IF NOT EXISTS idx_courts_active ON courts(is_active);
-
-      -- Create trigger to update updated_at
-      CREATE OR REPLACE FUNCTION update_courts_updated_at()
-      RETURNS TRIGGER AS $$
-      BEGIN
-          NEW.updated_at = CURRENT_TIMESTAMP;
-          RETURN NEW;
-      END;
-      $$ language 'plpgsql';
-
-      DROP TRIGGER IF EXISTS update_courts_updated_at ON courts;
-      CREATE TRIGGER update_courts_updated_at
-          BEFORE UPDATE ON courts
-          FOR EACH ROW
-          EXECUTE FUNCTION update_courts_updated_at();
-    `;
-
-    try {
-      await query(createTableQuery);
-      console.log('✅ Courts table created/verified successfully');
-    } catch (error) {
-      console.error('❌ Error creating courts table:', error.message);
-      throw error;
-    }
+    // Related data
+    this.venueName = courtData.venue?.name;
+    this.venueLocation = courtData.venue?.location;
   }
 
   // Create a new court
   static async create(courtData) {
-    const { venueId, name, sportType, pricePerHour, operatingHours } = courtData;
+    const { venueId, name, sportType, pricePerHour, photos = [], amenities = [] } = courtData;
 
-    const insertQuery = `
-      INSERT INTO courts (venue_id, name, sport_type, price_per_hour, operating_hours)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-    `;
+    const court = await prisma.court.create({
+      data: {
+        venueId,
+        name,
+        sportType,
+        pricePerHour,
+        photos,
+        amenities,
+      },
+      select: {
+        id: true,
+        venueId: true,
+        name: true,
+        sportType: true,
+        pricePerHour: true,
+        photos: true,
+        amenities: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        venue: {
+          select: {
+            name: true,
+            location: true,
+          },
+        },
+      },
+    });
 
-    const result = await query(insertQuery, [
-      venueId,
-      name,
-      sportType,
-      pricePerHour,
-      operatingHours,
-    ]);
-    return new Court(result.rows[0]);
+    return new Court(court);
   }
 
   // Find court by ID
   static async findById(id) {
-    const selectQuery = `
-      SELECT c.*, v.name as venue_name, v.location as venue_location
-      FROM courts c
-      LEFT JOIN venues v ON c.venue_id = v.id
-      WHERE c.id = $1
-    `;
+    const court = await prisma.court.findUnique({
+      where: { id: parseInt(id) },
+      select: {
+        id: true,
+        venueId: true,
+        name: true,
+        sportType: true,
+        pricePerHour: true,
+        photos: true,
+        amenities: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        venue: {
+          select: {
+            name: true,
+            location: true,
+            ownerId: true,
+          },
+        },
+        timeSlots: {
+          orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+        },
+      },
+    });
 
-    const result = await query(selectQuery, [id]);
-    return result.rows.length > 0 ? new Court(result.rows[0]) : null;
+    return court ? new Court(court) : null;
   }
 
   // Get courts by venue
-  static async findByVenue(venueId) {
-    const selectQuery = `
-      SELECT * FROM courts
-      WHERE venue_id = $1 AND is_active = true
-      ORDER BY sport_type, name
-    `;
+  static async findByVenue(venueId, includeInactive = false) {
+    const where = {
+      venueId: parseInt(venueId),
+    };
 
-    const result = await query(selectQuery, [venueId]);
-    return result.rows.map((row) => new Court(row));
+    if (!includeInactive) {
+      where.isActive = true;
+    }
+
+    const courts = await prisma.court.findMany({
+      where,
+      select: {
+        id: true,
+        venueId: true,
+        name: true,
+        sportType: true,
+        pricePerHour: true,
+        photos: true,
+        amenities: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        venue: {
+          select: {
+            name: true,
+            location: true,
+          },
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    return courts.map((court) => new Court(court));
   }
 
   // Get courts by sport type
-  static async findBySportType(sportType, limit = 20, offset = 0) {
-    const selectQuery = `
-      SELECT c.*, v.name as venue_name, v.location as venue_location, v.rating as venue_rating
-      FROM courts c
-      JOIN venues v ON c.venue_id = v.id
-      WHERE c.sport_type = $1 AND c.is_active = true AND v.is_approved = true
-      ORDER BY v.rating DESC, c.price_per_hour ASC
-      LIMIT $2 OFFSET $3
-    `;
+  static async findBySportType(sportType, venueId = null) {
+    const where = {
+      sportType,
+      isActive: true,
+    };
 
-    const result = await query(selectQuery, [sportType, limit, offset]);
-    return result.rows.map((row) => new Court(row));
-  }
-
-  // Check availability for a specific time slot
-  async checkAvailability(date, startTime, endTime) {
-    const availabilityQuery = `
-      SELECT COUNT(*) as booking_count
-      FROM bookings
-      WHERE court_id = $1
-        AND booking_date = $2
-        AND status != 'cancelled'
-        AND (
-          (start_time <= $3 AND end_time > $3) OR
-          (start_time < $4 AND end_time >= $4) OR
-          (start_time >= $3 AND end_time <= $4)
-        )
-    `;
-
-    const result = await query(availabilityQuery, [this.id, date, startTime, endTime]);
-    return parseInt(result.rows[0].booking_count) === 0;
-  }
-
-  // Get available time slots for a specific date
-  async getAvailableSlots(date) {
-    const bookedSlotsQuery = `
-      SELECT start_time, end_time
-      FROM bookings
-      WHERE court_id = $1
-        AND booking_date = $2
-        AND status != 'cancelled'
-      ORDER BY start_time
-    `;
-
-    const result = await query(bookedSlotsQuery, [this.id, date]);
-
-    // Generate available slots based on operating hours and booked slots
-    const operatingHours = this.operatingHours || { start: '06:00', end: '22:00' };
-    const availableSlots = [];
-
-    // This is a simplified version - you might want to implement more sophisticated slot generation
-    const startHour = parseInt(operatingHours.start.split(':')[0]);
-    const endHour = parseInt(operatingHours.end.split(':')[0]);
-
-    for (let hour = startHour; hour < endHour; hour++) {
-      const slotStart = `${hour.toString().padStart(2, '0')}:00`;
-      const slotEnd = `${(hour + 1).toString().padStart(2, '0')}:00`;
-
-      // Check if this slot conflicts with any booking
-      const isBooked = result.rows.some((booking) => {
-        return slotStart < booking.end_time && slotEnd > booking.start_time;
-      });
-
-      if (!isBooked) {
-        availableSlots.push({
-          startTime: slotStart,
-          endTime: slotEnd,
-          price: this.pricePerHour,
-        });
-      }
+    if (venueId) {
+      where.venueId = parseInt(venueId);
     }
 
-    return availableSlots;
+    const courts = await prisma.court.findMany({
+      where,
+      select: {
+        id: true,
+        venueId: true,
+        name: true,
+        sportType: true,
+        pricePerHour: true,
+        photos: true,
+        amenities: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        venue: {
+          select: {
+            name: true,
+            location: true,
+            isApproved: true,
+          },
+        },
+      },
+      orderBy: {
+        pricePerHour: 'asc',
+      },
+    });
+
+    // Filter only approved venues if no specific venue ID
+    if (!venueId) {
+      return courts.filter((court) => court.venue.isApproved).map((court) => new Court(court));
+    }
+
+    return courts.map((court) => new Court(court));
+  }
+
+  // Search courts with filters
+  static async search(filters = {}, limit = 20, offset = 0) {
+    const where = {
+      isActive: true,
+      venue: {
+        isApproved: true,
+      },
+    };
+
+    if (filters.sportType) {
+      where.sportType = filters.sportType;
+    }
+
+    if (filters.location) {
+      where.venue.location = {
+        contains: filters.location,
+        mode: 'insensitive',
+      };
+    }
+
+    if (filters.maxPrice) {
+      where.pricePerHour = {
+        lte: parseFloat(filters.maxPrice),
+      };
+    }
+
+    if (filters.minPrice) {
+      where.pricePerHour = {
+        gte: parseFloat(filters.minPrice),
+      };
+    }
+
+    if (filters.search) {
+      where.OR = [
+        {
+          name: {
+            contains: filters.search,
+            mode: 'insensitive',
+          },
+        },
+        {
+          venue: {
+            name: {
+              contains: filters.search,
+              mode: 'insensitive',
+            },
+          },
+        },
+      ];
+    }
+
+    const courts = await prisma.court.findMany({
+      where,
+      select: {
+        id: true,
+        venueId: true,
+        name: true,
+        sportType: true,
+        pricePerHour: true,
+        photos: true,
+        amenities: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        venue: {
+          select: {
+            name: true,
+            location: true,
+            rating: true,
+          },
+        },
+      },
+      orderBy: [{ venue: { rating: 'desc' } }, { pricePerHour: 'asc' }],
+      take: limit,
+      skip: offset,
+    });
+
+    return courts.map((court) => new Court(court));
   }
 
   // Update court
   async update(updateData) {
-    const fields = [];
-    const values = [];
-    let paramCount = 1;
+    const allowedFields = ['name', 'sportType', 'pricePerHour', 'photos', 'amenities', 'isActive'];
+
+    const prismaUpdateData = {};
 
     Object.keys(updateData).forEach((key) => {
-      if (updateData[key] !== undefined) {
-        const dbField = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        fields.push(`${dbField} = $${paramCount}`);
-        values.push(updateData[key]);
-        paramCount++;
+      if (allowedFields.includes(key) && updateData[key] !== undefined) {
+        prismaUpdateData[key] = updateData[key];
       }
     });
 
-    if (fields.length === 0) {
-      throw new Error('No fields to update');
+    if (Object.keys(prismaUpdateData).length === 0) {
+      throw new Error('No valid fields to update');
     }
 
-    values.push(this.id);
+    const updatedCourt = await prisma.court.update({
+      where: { id: this.id },
+      data: prismaUpdateData,
+      select: {
+        id: true,
+        venueId: true,
+        name: true,
+        sportType: true,
+        pricePerHour: true,
+        photos: true,
+        amenities: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        venue: {
+          select: {
+            name: true,
+            location: true,
+          },
+        },
+      },
+    });
 
-    const updateQuery = `
-      UPDATE courts
-      SET ${fields.join(', ')}
-      WHERE id = $${paramCount}
-      RETURNING *
-    `;
-
-    const result = await query(updateQuery, values);
-    return new Court(result.rows[0]);
-  }
-
-  // Deactivate court
-  async deactivate() {
-    return this.update({ isActive: false });
+    return new Court(updatedCourt);
   }
 
   // Delete court
   async delete() {
-    const deleteQuery = `DELETE FROM courts WHERE id = $1 RETURNING id`;
-    const result = await query(deleteQuery, [this.id]);
-    return result.rows.length > 0;
+    await prisma.court.delete({
+      where: { id: this.id },
+    });
+
+    return true;
+  }
+
+  // Deactivate court (soft delete)
+  async deactivate() {
+    const updatedCourt = await prisma.court.update({
+      where: { id: this.id },
+      data: { isActive: false },
+    });
+
+    return new Court(updatedCourt);
+  }
+
+  // Activate court
+  async activate() {
+    const updatedCourt = await prisma.court.update({
+      where: { id: this.id },
+      data: { isActive: true },
+    });
+
+    return new Court(updatedCourt);
+  }
+
+  // Check court availability for a specific date and time
+  async checkAvailability(date, startTime, endTime) {
+    const bookingDate = new Date(date);
+    const start = new Date(`1970-01-01T${startTime}`);
+    const end = new Date(`1970-01-01T${endTime}`);
+
+    const conflictingBookings = await prisma.booking.findMany({
+      where: {
+        courtId: this.id,
+        bookingDate,
+        status: {
+          not: 'cancelled',
+        },
+        OR: [
+          {
+            AND: [{ startTime: { lte: start } }, { endTime: { gt: start } }],
+          },
+          {
+            AND: [{ startTime: { lt: end } }, { endTime: { gte: end } }],
+          },
+          {
+            AND: [{ startTime: { gte: start } }, { endTime: { lte: end } }],
+          },
+        ],
+      },
+    });
+
+    return conflictingBookings.length === 0;
+  }
+
+  // Get court bookings for a specific date
+  async getBookings(date) {
+    const bookingDate = new Date(date);
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        courtId: this.id,
+        bookingDate,
+        status: {
+          not: 'cancelled',
+        },
+      },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        startTime: 'asc',
+      },
+    });
+
+    return bookings;
+  }
+
+  // Get court statistics
+  async getStats(startDate = null, endDate = null) {
+    const where = {
+      courtId: this.id,
+    };
+
+    if (startDate && endDate) {
+      where.bookingDate = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      };
+    }
+
+    const [bookingStats, revenue] = await Promise.all([
+      prisma.booking.groupBy({
+        by: ['status'],
+        where,
+        _count: {
+          id: true,
+        },
+      }),
+      prisma.booking.aggregate({
+        where: {
+          ...where,
+          status: {
+            in: ['confirmed', 'completed'],
+          },
+        },
+        _sum: {
+          totalAmount: true,
+        },
+      }),
+    ]);
+
+    const stats = {
+      totalBookings: 0,
+      confirmedBookings: 0,
+      completedBookings: 0,
+      cancelledBookings: 0,
+      totalRevenue: parseFloat(revenue._sum.totalAmount) || 0,
+    };
+
+    bookingStats.forEach((stat) => {
+      stats.totalBookings += stat._count.id;
+      switch (stat.status) {
+        case 'confirmed':
+          stats.confirmedBookings = stat._count.id;
+          break;
+        case 'completed':
+          stats.completedBookings = stat._count.id;
+          break;
+        case 'cancelled':
+          stats.cancelledBookings = stat._count.id;
+          break;
+      }
+    });
+
+    return stats;
   }
 
   // Convert to JSON
@@ -231,10 +445,13 @@ class Court {
       name: this.name,
       sportType: this.sportType,
       pricePerHour: parseFloat(this.pricePerHour),
-      operatingHours: this.operatingHours,
+      photos: this.photos,
+      amenities: this.amenities,
       isActive: this.isActive,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
+      venueName: this.venueName,
+      venueLocation: this.venueLocation,
     };
   }
 }

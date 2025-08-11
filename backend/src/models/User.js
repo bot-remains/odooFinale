@@ -1,4 +1,4 @@
-import { query } from '../config/database.js';
+import prisma from '../config/prisma.js';
 import bcrypt from 'bcryptjs';
 
 class User {
@@ -9,61 +9,15 @@ class User {
     this.password = userData.password;
     this.avatar = userData.avatar;
     this.role = userData.role || 'user';
-    this.isActive = userData.is_active !== undefined ? userData.is_active : true;
-    this.isVerified = userData.is_verified !== undefined ? userData.is_verified : false;
-    this.otpCode = userData.otp_code;
-    this.otpExpiry = userData.otp_expiry;
-    this.createdAt = userData.created_at;
-    this.updatedAt = userData.updated_at;
-    this.lastLogin = userData.last_login;
-  }
-
-  // Create users table if it doesn't exist
-  static async createTable() {
-    const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(100) NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        avatar VARCHAR(500),
-        role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'facility_owner', 'admin')),
-        is_active BOOLEAN DEFAULT true,
-        is_verified BOOLEAN DEFAULT false,
-        otp_code VARCHAR(6),
-        otp_expiry TIMESTAMP,
-        last_login TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      -- Create index on email for faster lookups
-      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-      CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
-
-      -- Create trigger to update updated_at timestamp
-      CREATE OR REPLACE FUNCTION update_updated_at_column()
-      RETURNS TRIGGER AS $$
-      BEGIN
-          NEW.updated_at = CURRENT_TIMESTAMP;
-          RETURN NEW;
-      END;
-      $$ language 'plpgsql';
-
-      DROP TRIGGER IF EXISTS update_users_updated_at ON users;
-      CREATE TRIGGER update_users_updated_at
-          BEFORE UPDATE ON users
-          FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
-    `;
-
-    try {
-      await query(createTableQuery);
-      console.log('✅ Users table created/verified successfully');
-    } catch (error) {
-      console.error('❌ Error creating users table:', error.message);
-      throw error;
-    }
+    this.isActive = userData.isActive !== undefined ? userData.isActive : true;
+    this.isVerified = userData.isVerified !== undefined ? userData.isVerified : false;
+    this.otpCode = userData.otpCode;
+    this.otpExpiry = userData.otpExpiry;
+    this.createdAt = userData.createdAt;
+    this.updatedAt = userData.updatedAt;
+    this.lastLogin = userData.lastLogin;
+    this.suspendedAt = userData.suspendedAt;
+    this.suspensionReason = userData.suspensionReason;
   }
 
   // Hash password before saving
@@ -85,41 +39,49 @@ class User {
       // Hash password
       const hashedPassword = await this.hashPassword(password);
 
-      let insertQuery, values;
+      let userCreateData = {
+        name,
+        email,
+        password: hashedPassword,
+        avatar,
+        role,
+        isVerified,
+      };
 
-      if (isVerified) {
-        // Create user as already verified (no OTP needed)
-        insertQuery = `
-          INSERT INTO users (name, email, password, avatar, role, is_verified)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          RETURNING id, name, email, avatar, role, is_active, is_verified, created_at, updated_at
-        `;
-        values = [name, email, hashedPassword, avatar, role, true];
-      } else {
-        // Create user with OTP for verification (legacy mode)
+      if (!isVerified) {
+        // Generate OTP for verification
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
         const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
-        insertQuery = `
-          INSERT INTO users (name, email, password, avatar, role, otp_code, otp_expiry, is_verified)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          RETURNING id, name, email, avatar, role, is_active, is_verified, created_at, updated_at
-        `;
-        values = [name, email, hashedPassword, avatar, role, otpCode, otpExpiry, false];
+        userCreateData.otpCode = otpCode;
+        userCreateData.otpExpiry = otpExpiry;
       }
 
-      const result = await query(insertQuery, values);
-      const user = new User(result.rows[0]);
+      const user = await prisma.user.create({
+        data: userCreateData,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatar: true,
+          role: true,
+          isActive: true,
+          isVerified: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
 
-      // Include OTP in response for email sending (only if not verified)
-      if (!isVerified && values.length > 6) {
-        user.otpCode = values[5]; // otpCode is at index 5
+      const userInstance = new User(user);
+
+      // Include OTP in response for email sending
+      if (!isVerified && userCreateData.otpCode) {
+        userInstance.otpCode = userCreateData.otpCode;
       }
 
-      return user;
+      return userInstance;
     } catch (error) {
-      if (error.code === '23505') {
-        // Unique violation
+      if (error.code === 'P2002') {
         throw new Error('User already exists with this email');
       }
       throw error;
@@ -128,42 +90,73 @@ class User {
 
   // Find user by email
   static async findByEmail(email) {
-    const selectQuery = `
-      SELECT id, name, email, password, avatar, role, is_active, is_verified, last_login, created_at, updated_at
-      FROM users
-      WHERE email = $1
-    `;
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        password: true,
+        avatar: true,
+        role: true,
+        isActive: true,
+        isVerified: true,
+        lastLogin: true,
+        suspendedAt: true,
+        suspensionReason: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
-    const result = await query(selectQuery, [email]);
-    return result.rows.length > 0 ? new User(result.rows[0]) : null;
+    return user ? new User(user) : null;
   }
 
   // Find user by ID
   static async findById(id) {
-    const selectQuery = `
-      SELECT id, name, email, avatar, role, is_active, is_verified, last_login, created_at, updated_at
-      FROM users
-      WHERE id = $1
-    `;
+    const user = await prisma.user.findUnique({
+      where: { id: parseInt(id) },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatar: true,
+        role: true,
+        isActive: true,
+        isVerified: true,
+        lastLogin: true,
+        suspendedAt: true,
+        suspensionReason: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
-    const result = await query(selectQuery, [id]);
-    return result.rows.length > 0 ? new User(result.rows[0]) : null;
+    return user ? new User(user) : null;
   }
 
   // Verify OTP
   static async verifyOTP(email, otpCode) {
-    const selectQuery = `
-      SELECT id, name, email, avatar, role, is_active, is_verified, otp_code, otp_expiry, created_at, updated_at
-      FROM users
-      WHERE email = $1
-    `;
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatar: true,
+        role: true,
+        isActive: true,
+        isVerified: true,
+        otpCode: true,
+        otpExpiry: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
-    const result = await query(selectQuery, [email]);
-    if (result.rows.length === 0) {
+    if (!user) {
       throw new Error('User not found');
     }
-
-    const user = new User(result.rows[0]);
 
     if (user.otpCode !== otpCode) {
       throw new Error('Invalid OTP code');
@@ -174,15 +167,27 @@ class User {
     }
 
     // Mark user as verified
-    const updateQuery = `
-      UPDATE users
-      SET is_verified = true, otp_code = NULL, otp_expiry = NULL
-      WHERE id = $1
-      RETURNING *
-    `;
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isVerified: true,
+        otpCode: null,
+        otpExpiry: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatar: true,
+        role: true,
+        isActive: true,
+        isVerified: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
-    const updateResult = await query(updateQuery, [user.id]);
-    return new User(updateResult.rows[0]);
+    return new User(updatedUser);
   }
 
   // Regenerate OTP
@@ -190,87 +195,178 @@ class User {
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
-    const updateQuery = `
-      UPDATE users
-      SET otp_code = $1, otp_expiry = $2
-      WHERE id = $3
-      RETURNING otp_code
-    `;
+    await prisma.user.update({
+      where: { id: this.id },
+      data: {
+        otpCode,
+        otpExpiry,
+      },
+    });
 
-    const result = await query(updateQuery, [otpCode, otpExpiry, this.id]);
-    return result.rows[0].otp_code;
+    return otpCode;
   }
 
   // Update last login
   async updateLastLogin() {
-    const updateQuery = `
-      UPDATE users
-      SET last_login = CURRENT_TIMESTAMP
-      WHERE id = $1
-      RETURNING last_login
-    `;
+    const updatedUser = await prisma.user.update({
+      where: { id: this.id },
+      data: {
+        lastLogin: new Date(),
+      },
+      select: {
+        lastLogin: true,
+      },
+    });
 
-    const result = await query(updateQuery, [this.id]);
-    this.lastLogin = result.rows[0].last_login;
+    this.lastLogin = updatedUser.lastLogin;
     return this;
   }
 
   // Update user
   async update(updateData) {
-    const fields = [];
-    const values = [];
-    let paramCount = 1;
+    // Convert camelCase to snake_case for database fields
+    const prismaUpdateData = {};
 
     Object.keys(updateData).forEach((key) => {
       if (updateData[key] !== undefined) {
-        fields.push(`${key} = $${paramCount}`);
-        values.push(updateData[key]);
-        paramCount++;
+        prismaUpdateData[key] = updateData[key];
       }
     });
 
-    if (fields.length === 0) {
+    if (Object.keys(prismaUpdateData).length === 0) {
       throw new Error('No fields to update');
     }
 
-    values.push(this.id); // Add ID as last parameter
+    const updatedUser = await prisma.user.update({
+      where: { id: this.id },
+      data: prismaUpdateData,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatar: true,
+        role: true,
+        isActive: true,
+        isVerified: true,
+        lastLogin: true,
+        suspendedAt: true,
+        suspensionReason: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
-    const updateQuery = `
-      UPDATE users
-      SET ${fields.join(', ')}
-      WHERE id = $${paramCount}
-      RETURNING id, name, email, role, is_active, last_login, created_at, updated_at
-    `;
-
-    const result = await query(updateQuery, values);
-    return new User(result.rows[0]);
+    return new User(updatedUser);
   }
 
   // Delete user (soft delete)
   async delete() {
-    const deleteQuery = `
-      UPDATE users
-      SET is_active = false
-      WHERE id = $1
-      RETURNING id
-    `;
+    const result = await prisma.user.update({
+      where: { id: this.id },
+      data: {
+        isActive: false,
+      },
+      select: {
+        id: true,
+      },
+    });
 
-    const result = await query(deleteQuery, [this.id]);
-    return result.rows.length > 0;
+    return !!result;
+  }
+
+  // Suspend user
+  async suspend(reason) {
+    const updatedUser = await prisma.user.update({
+      where: { id: this.id },
+      data: {
+        suspendedAt: new Date(),
+        suspensionReason: reason,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatar: true,
+        role: true,
+        isActive: true,
+        isVerified: true,
+        suspendedAt: true,
+        suspensionReason: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return new User(updatedUser);
+  }
+
+  // Unsuspend user
+  async unsuspend() {
+    const updatedUser = await prisma.user.update({
+      where: { id: this.id },
+      data: {
+        suspendedAt: null,
+        suspensionReason: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatar: true,
+        role: true,
+        isActive: true,
+        isVerified: true,
+        suspendedAt: true,
+        suspensionReason: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return new User(updatedUser);
   }
 
   // Get all users (admin only)
-  static async findAll(limit = 10, offset = 0) {
-    const selectQuery = `
-      SELECT id, name, email, role, is_active, last_login, created_at, updated_at
-      FROM users
-      WHERE is_active = true
-      ORDER BY created_at DESC
-      LIMIT $1 OFFSET $2
-    `;
+  static async findAll(filters = {}, limit = 10, offset = 0) {
+    const where = {
+      isActive: true,
+      ...filters,
+    };
 
-    const result = await query(selectQuery, [limit, offset]);
-    return result.rows.map((row) => new User(row));
+    const users = await prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatar: true,
+        role: true,
+        isActive: true,
+        isVerified: true,
+        lastLogin: true,
+        suspendedAt: true,
+        suspensionReason: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+      skip: offset,
+    });
+
+    return users.map((user) => new User(user));
+  }
+
+  // Get user count
+  static async getCount(filters = {}) {
+    const where = {
+      isActive: true,
+      ...filters,
+    };
+
+    return await prisma.user.count({ where });
   }
 
   // Convert to JSON (exclude sensitive data)
@@ -284,6 +380,8 @@ class User {
       isActive: this.isActive,
       isVerified: this.isVerified,
       lastLogin: this.lastLogin,
+      suspendedAt: this.suspendedAt,
+      suspensionReason: this.suspensionReason,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };
