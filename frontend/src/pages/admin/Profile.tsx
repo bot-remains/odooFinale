@@ -11,4 +11,6 @@ const AdminProfile = () => {
   );
 };
 
+//profile
+
 export default AdminProfile;
