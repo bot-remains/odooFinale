@@ -1,55 +1,50 @@
 import { Navigate, useLocation } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { UserRole } from "@/lib/types";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requireAdmin?: boolean;
+  allowedRoles?: UserRole[];
+  requireAdmin?: boolean; // Keep for backward compatibility
 }
 
-const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+const ProtectedRoute = ({
+  children,
+  allowedRoles,
+  requireAdmin = false,
+}: ProtectedRouteProps) => {
+  const { user, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  useEffect(() => {
-    const checkUser = () => {
-      try {
-        const userData = localStorage.getItem('user');
-        if (userData) {
-          const parsedUser = JSON.parse(userData);
-          setUser(parsedUser);
-        }
-      } catch (error) {
-        console.error('Error parsing user data:', error);
-        localStorage.removeItem('user'); // Clear invalid data
-      }
-      setLoading(false);
-    };
-
-    checkUser();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900"></div>
-      </div>
-    );
+  // If not authenticated, redirect to login with return URL
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 
-  // If no user is logged in, redirect to login
-  if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  // Handle legacy requireAdmin prop
+  if (requireAdmin && user.role !== "admin") {
+    return <Navigate to="/" replace />;
   }
 
-  // If admin is required but user is not admin, redirect to home
-  if (requireAdmin && (!user.role || user.role !== 'admin')) {
-    // For demo purposes, let's assume all logged in users can access admin routes
-    // In production, you'd check user.role === 'admin'
-    // return <Navigate to="/" replace />;
+  // If specific roles are required, check user role
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    // Redirect to appropriate dashboard based on user role
+    const dashboardPath = getDashboardPath(user.role);
+    return <Navigate to={dashboardPath} replace />;
   }
 
   return <>{children}</>;
 };
+
+function getDashboardPath(role: UserRole): string {
+  switch (role) {
+    case "admin":
+      return "/admin/dashboard";
+    case "facility_owner":
+      return "/owner/dashboard";
+    default:
+      return "/venues";
+  }
+}
 
 export default ProtectedRoute;

@@ -1,0 +1,334 @@
+// User types
+export type UserRole = "user" | "facility_owner" | "admin";
+
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: User;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  role?: UserRole;
+}
+
+// Venue types
+export interface Venue {
+  id: number;
+  name: string;
+  description: string;
+  location: string;
+  address: string;
+  contactPhone: string;
+  contactEmail: string;
+  amenities: string[];
+  rating: number;
+  totalReviews: number;
+  isApproved: boolean;
+  ownerId: number;
+  createdAt: string;
+  updatedAt?: string;
+  operatingHours?: {
+    [key: string]: {
+      open: string;
+      close: string;
+    };
+  };
+}
+
+export interface VenueSearchParams {
+  search?: string;
+  location?: string;
+  sportType?: string;
+  minRating?: number;
+  maxPrice?: number;
+  sortBy?: "rating" | "price" | "distance" | "name";
+  limit?: number;
+  offset?: number;
+}
+
+export interface CreateVenueRequest {
+  name: string;
+  description: string;
+  location: string;
+  address: string;
+  contactPhone: string;
+  contactEmail: string;
+  amenities: string[];
+  operatingHours: {
+    [key: string]: {
+      open: string;
+      close: string;
+    };
+  };
+}
+
+// Court types
+export interface Court {
+  id: number;
+  venueId: number;
+  name: string;
+  sportType: string;
+  description: string;
+  pricePerHour: number;
+  capacity: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt?: string;
+  venue?: Venue;
+}
+
+export interface CreateCourtRequest {
+  venueId: number;
+  name: string;
+  sportType: string;
+  description: string;
+  pricePerHour: number;
+  capacity: number;
+}
+
+// Booking types
+export interface Booking {
+  id: number;
+  userId: number;
+  courtId: number;
+  bookingDate: string;
+  startTime: string;
+  endTime: string;
+  totalAmount: number;
+  status: "pending" | "confirmed" | "cancelled" | "completed";
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+  user?: User;
+  court?: Court;
+  venue?: Venue;
+}
+
+export interface CreateBookingRequest {
+  courtId: number;
+  bookingDate: string;
+  startTime: string;
+  endTime: string;
+  notes?: string;
+  totalAmount: number;
+}
+
+export interface BookingSearchParams {
+  status?: "pending" | "confirmed" | "cancelled" | "completed";
+  upcoming?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+// Review types
+export interface Review {
+  id: number;
+  userId: number;
+  venueId: number;
+  bookingId: number;
+  courtId: number;
+  rating: number;
+  comment: string;
+  helpfulCount: number;
+  createdAt: string;
+  updatedAt?: string;
+  user?: User;
+  venue?: Venue;
+}
+
+export interface CreateReviewRequest {
+  venueId: number;
+  bookingId: number;
+  courtId: number;
+  rating: number;
+  comment: string;
+}
+
+export interface ReviewSearchParams {
+  rating?: number;
+  sortBy?: "created_at" | "rating" | "helpful";
+  limit?: number;
+  offset?: number;
+}
+
+// Time Slot types
+export interface TimeSlot {
+  id: number;
+  courtId: number;
+  date: string;
+  startTime: string;
+  endTime: string;
+  isAvailable: boolean;
+  isBlocked: boolean;
+  blockReason?: string;
+  bookingId?: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface BlockTimeSlotRequest {
+  courtId: number;
+  date: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+}
+
+// Payment types
+export interface Payment {
+  id: number;
+  bookingId: number;
+  userId: number;
+  amount: number;
+  status: "pending" | "completed" | "failed" | "refunded";
+  paymentMethod: string;
+  transactionId: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CreatePaymentIntentRequest {
+  bookingId: number;
+  amount: number;
+}
+
+export interface ConfirmPaymentRequest {
+  paymentIntentId: string;
+}
+
+export interface RefundRequest {
+  reason: string;
+  amount?: number;
+}
+
+// Notification types
+export interface Notification {
+  id: number;
+  userId: number;
+  type:
+    | "booking_confirmed"
+    | "booking_cancelled"
+    | "booking_reminder"
+    | "venue_approved"
+    | "venue_rejected"
+    | "new_booking";
+  title: string;
+  message: string;
+  isRead: boolean;
+  data?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface NotificationPreferences {
+  email_bookings: boolean;
+  email_reminders: boolean;
+  email_promotions: boolean;
+  push_bookings: boolean;
+  push_reminders: boolean;
+  push_promotions: boolean;
+  sms_bookings: boolean;
+  sms_reminders: boolean;
+}
+
+export interface NotificationSearchParams {
+  type?: string;
+  isRead?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+// Admin types
+export interface AdminDashboardStats {
+  totalUsers: number;
+  totalVenues: number;
+  totalBookings: number;
+  totalRevenue: number;
+  pendingVenues: number;
+  activeUsers: number;
+  recentBookings: Booking[];
+  topVenues: Venue[];
+}
+
+export interface UserManagementParams {
+  role?: "user" | "facility_owner" | "admin";
+  search?: string;
+  status?: "active" | "suspended";
+  limit?: number;
+  offset?: number;
+}
+
+export interface UserStatusUpdate {
+  action: "suspend" | "activate";
+  reason?: string;
+}
+
+export interface VenueReviewAction {
+  action: "approve" | "reject";
+  rejectionReason?: string;
+}
+
+export interface SystemReport {
+  reportType: "bookings" | "revenue" | "users" | "venues";
+  startDate: string;
+  endDate: string;
+  data: Record<string, unknown>;
+}
+
+// Venue Management (Owner) types
+export interface VenueOwnerDashboard {
+  totalVenues: number;
+  totalBookings: number;
+  totalRevenue: number;
+  activeVenues: number;
+  pendingBookings: number;
+  recentBookings: Booking[];
+  venueStats: {
+    venueId: number;
+    venueName: string;
+    bookingCount: number;
+    revenue: number;
+  }[];
+}
+
+// Sports and general types
+export interface Sport {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string;
+}
+
+export interface AvailabilityCheck {
+  courtId: number;
+  date: string;
+  availableSlots: {
+    startTime: string;
+    endTime: string;
+    price: number;
+  }[];
+}
+
+export interface PopularVenue extends Venue {
+  bookingCount: number;
+  popularityScore: number;
+}

@@ -26,13 +26,13 @@ import {
 import { Link } from "react-router-dom";
 import { useState, useMemo } from "react";
 import { useVenues, useSports } from "@/services/venueService";
-import { VenueSearchParams, Venue } from "@/lib/types";
+import { VenueSearchParams } from "@/lib/types";
 
 const VenueCard = ({
   venue,
   isLoading,
 }: {
-  venue?: Venue;
+  venue?: any;
   isLoading?: boolean;
 }) => {
   if (isLoading) {

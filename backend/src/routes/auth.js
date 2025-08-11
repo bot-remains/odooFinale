@@ -23,6 +23,7 @@ router.post('/verify-otp', userValidation.verifyOTP, handleValidationErrors, ver
 router.post('/resend-otp', userValidation.resendOTP, handleValidationErrors, resendOTP);
 
 // Protected routes
+router.get('/me', authenticateToken, getProfile);
 router.get('/profile', authenticateToken, getProfile);
 router.put(
   '/profile',
