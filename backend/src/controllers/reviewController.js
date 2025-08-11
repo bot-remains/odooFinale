@@ -6,10 +6,6 @@ export const createReview = async (req, res) => {
   try {
     const { bookingId, venueId, rating, comment } = req.body;
     const userId = req.user.id;
-<<<<<<< HEAD
-    const { venueId, bookingId, rating, comment } = req.body;
-=======
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
 
     // Verify booking exists and belongs to user
     const booking = await prisma.booking.findFirst({
@@ -44,56 +40,6 @@ export const createReview = async (req, res) => {
     }
 
     // Create review
-<<<<<<< HEAD
-    const reviewData = {
-      user_id: userId,
-      venue_id: venueId,
-      booking_id: bookingId,
-      rating: rating,
-      comment: comment || '',
-      created_at: new Date(),
-      updated_at: new Date(),
-    };
-
-    const insertQuery = `
-      INSERT INTO reviews (user_id, venue_id, booking_id, rating, comment, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-    `;
-
-    const reviewResult = await query(insertQuery, [
-      reviewData.user_id,
-      reviewData.venue_id,
-      reviewData.booking_id,
-      reviewData.rating,
-      reviewData.comment,
-      reviewData.created_at,
-      reviewData.updated_at,
-    ]);
-
-    const review = reviewResult.rows[0];
-
-    // Mark booking as reviewed
-    await query('UPDATE bookings SET reviewed = true WHERE id = $1', [bookingId]);
-
-    // Update venue rating
-    await updateVenueRating(venueId);
-
-    // Get complete review details for response
-    const reviewDetailsQuery = `
-      SELECT
-        r.*,
-        u.name as user_name,
-        u.avatar as user_avatar,
-        v.name as venue_name
-      FROM reviews r
-      JOIN users u ON r.user_id = u.id
-      JOIN venues v ON r.venue_id = v.id
-      WHERE r.id = $1
-    `;
-
-    const detailsResult = await query(reviewDetailsQuery, [review.id]);
-=======
     const review = await prisma.review.create({
       data: {
         userId: userId,
@@ -121,7 +67,6 @@ export const createReview = async (req, res) => {
       where: { id: parseInt(bookingId) },
       data: { reviewed: true },
     });
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
 
     res.status(201).json({
       success: true,
@@ -159,56 +104,6 @@ export const updateReview = async (req, res) => {
       });
     }
 
-<<<<<<< HEAD
-    const existingReview = reviewCheck.rows[0];
-
-    // Check if review can be updated (within 30 days)
-    const reviewDate = new Date(existingReview.created_at);
-    const now = new Date();
-    const daysSinceReview = (now - reviewDate) / (1000 * 60 * 60 * 24);
-
-    if (daysSinceReview > 30) {
-      return res.status(400).json({
-        success: false,
-        message: 'Reviews can only be updated within 30 days of creation',
-      });
-    }
-
-    // Update review
-    const updateQuery = `
-      UPDATE reviews
-      SET rating = $1, comment = $2, updated_at = $3
-      WHERE id = $4
-      RETURNING *
-    `;
-
-    const updateResult = await query(updateQuery, [
-      rating,
-      comment || existingReview.comment,
-      new Date(),
-      reviewId,
-    ]);
-
-    // Update venue rating if rating changed
-    if (rating !== existingReview.rating) {
-      await updateVenueRating(existingReview.venue_id);
-    }
-
-    // Get complete review details for response
-    const reviewDetailsQuery = `
-      SELECT
-        r.*,
-        u.name as user_name,
-        u.avatar as user_avatar,
-        v.name as venue_name
-      FROM reviews r
-      JOIN users u ON r.user_id = u.id
-      JOIN venues v ON r.venue_id = v.id
-      WHERE r.id = $1
-    `;
-
-    const detailsResult = await query(reviewDetailsQuery, [reviewId]);
-=======
     const updatedReview = await prisma.review.update({
       where: { id: parseInt(reviewId) },
       data: {
@@ -229,7 +124,6 @@ export const updateReview = async (req, res) => {
         },
       },
     });
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
 
     res.json({
       success: true,
@@ -323,19 +217,6 @@ export const getVenueReviews = async (req, res) => {
       where: { venueId: parseInt(venueId) },
     });
 
-<<<<<<< HEAD
-    const reviewsQuery = `
-      SELECT
-        r.*,
-        u.name as user_name,
-        u.avatar as user_avatar
-      FROM reviews r
-      JOIN users u ON r.user_id = u.id
-      ${whereClause}
-      ${orderClause}
-      LIMIT $${paramCount} OFFSET $${paramCount + 1}
-    `;
-=======
     // Get rating statistics
     const ratingStats = await prisma.review.groupBy({
       by: ['rating'],
@@ -344,7 +225,6 @@ export const getVenueReviews = async (req, res) => {
         rating: true,
       },
     });
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
 
     const averageRating = await prisma.review.aggregate({
       where: { venueId: parseInt(venueId) },
@@ -403,30 +283,9 @@ export const getUserReviews = async (req, res) => {
       skip: parseInt(offset),
     });
 
-<<<<<<< HEAD
-    const reviewsQuery = `
-      SELECT
-        r.*,
-        v.name as venue_name,
-        v.location as venue_location
-      FROM reviews r
-      JOIN venues v ON r.venue_id = v.id
-      WHERE r.user_id = $1
-      ORDER BY r.created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-
-    const reviewsResult = await query(reviewsQuery, [userId, limit, offset]);
-
-    // Get total count
-    const countResult = await query('SELECT COUNT(*) as total FROM reviews WHERE user_id = $1', [
-      userId,
-    ]);
-=======
     const total = await prisma.review.count({
       where: { userId: userId },
     });
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
 
     res.json({
       success: true,

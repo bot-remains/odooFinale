@@ -20,19 +20,7 @@ class Court {
 
   // Create a new court
   static async create(courtData) {
-<<<<<<< HEAD
-    const { 
-      venueId, 
-      name, 
-      sportType, 
-      pricePerHour, 
-      operatingHours,
-      maxPlayers,
-      description 
-    } = courtData;
-=======
     const { venueId, name, sportType, pricePerHour, photos = [], amenities = [] } = courtData;
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
 
     const court = await prisma.court.create({
       data: {
@@ -63,23 +51,7 @@ class Court {
       },
     });
 
-<<<<<<< HEAD
-    // Format operating hours for database
-    const formattedOperatingHours = typeof operatingHours === 'object' 
-      ? JSON.stringify(operatingHours)
-      : operatingHours;
-
-    const result = await query(insertQuery, [
-      venueId,
-      name,
-      sportType,
-      pricePerHour,
-      formattedOperatingHours,
-    ]);
-    return new Court(result.rows[0]);
-=======
     return new Court(court);
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
   }
 
   // Find court by ID

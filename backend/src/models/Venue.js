@@ -7,8 +7,8 @@ class Venue {
     this.description = venueData.description;
     this.address = venueData.address;
     this.location = venueData.location;
-    this.amenities = Array.isArray(venueData.amenities) ? venueData.amenities : (venueData.amenities ? JSON.parse(venueData.amenities) : []);
-    this.photos = Array.isArray(venueData.photos) ? venueData.photos : (venueData.photos ? JSON.parse(venueData.photos) : []);
+    this.amenities = venueData.amenities;
+    this.photos = venueData.photos;
     this.rating = venueData.rating;
     this.totalReviews = venueData.totalReviews;
     this.ownerId = venueData.ownerId;
@@ -23,127 +23,11 @@ class Venue {
     this.createdAt = venueData.createdAt;
     this.updatedAt = venueData.updatedAt;
 
-<<<<<<< HEAD
-  // Create venues table
-  static async createTable() {
-    const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS venues (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        address TEXT NOT NULL,
-        location VARCHAR(255) NOT NULL,
-        amenities JSONB DEFAULT '[]', -- JSONB array of amenities
-        photos JSONB DEFAULT '[]', -- JSONB array of photo URLs
-        contact_phone VARCHAR(20),
-        contact_email VARCHAR(255),
-        rating DECIMAL(2,1) DEFAULT 0.0,
-        total_reviews INTEGER DEFAULT 0,
-        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        is_approved BOOLEAN DEFAULT false,
-        rejection_reason TEXT,
-        rejected_at TIMESTAMP,
-        rejected_by INTEGER REFERENCES users(id),
-        approved_at TIMESTAMP,
-        approved_by INTEGER REFERENCES users(id),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      -- Add contact columns if they don't exist
-      DO $$ 
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='contact_phone') THEN
-          ALTER TABLE venues ADD COLUMN contact_phone VARCHAR(20);
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='contact_email') THEN
-          ALTER TABLE venues ADD COLUMN contact_email VARCHAR(255);
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='rejection_reason') THEN
-          ALTER TABLE venues ADD COLUMN rejection_reason TEXT;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='rejected_at') THEN
-          ALTER TABLE venues ADD COLUMN rejected_at TIMESTAMP;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='rejected_by') THEN
-          ALTER TABLE venues ADD COLUMN rejected_by INTEGER REFERENCES users(id);
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='approved_at') THEN
-          ALTER TABLE venues ADD COLUMN approved_at TIMESTAMP;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='approved_by') THEN
-          ALTER TABLE venues ADD COLUMN approved_by INTEGER REFERENCES users(id);
-        END IF;
-      END $$;
-
-      -- Create indexes
-      CREATE INDEX IF NOT EXISTS idx_venues_owner_id ON venues(owner_id);
-      CREATE INDEX IF NOT EXISTS idx_venues_approved ON venues(is_approved);
-      CREATE INDEX IF NOT EXISTS idx_venues_location ON venues(location);
-      CREATE INDEX IF NOT EXISTS idx_venues_rating ON venues(rating);
-
-      -- Create trigger to update updated_at
-      CREATE OR REPLACE FUNCTION update_venues_updated_at()
-      RETURNS TRIGGER AS $$
-      BEGIN
-          NEW.updated_at = CURRENT_TIMESTAMP;
-          RETURN NEW;
-      END;
-      $$ language 'plpgsql';
-
-      DROP TRIGGER IF EXISTS update_venues_updated_at ON venues;
-      CREATE TRIGGER update_venues_updated_at
-          BEFORE UPDATE ON venues
-          FOR EACH ROW
-          EXECUTE FUNCTION update_venues_updated_at();
-
-      -- Migrate existing TEXT[] columns to JSONB
-      DO $$ 
-      BEGIN
-        -- Check if amenities is TEXT[] and convert to JSONB
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns 
-          WHERE table_name='venues' AND column_name='amenities' AND data_type='ARRAY'
-        ) THEN
-          ALTER TABLE venues ALTER COLUMN amenities TYPE JSONB USING 
-            CASE 
-              WHEN amenities IS NULL THEN '[]'::jsonb
-              ELSE array_to_json(amenities)::jsonb
-            END;
-        END IF;
-
-        -- Check if photos is TEXT[] and convert to JSONB
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns 
-          WHERE table_name='venues' AND column_name='photos' AND data_type='ARRAY'
-        ) THEN
-          ALTER TABLE venues ALTER COLUMN photos TYPE JSONB USING 
-            CASE 
-              WHEN photos IS NULL THEN '[]'::jsonb
-              ELSE array_to_json(photos)::jsonb
-            END;
-        END IF;
-
-        -- Ensure updated_at has a default value
-        ALTER TABLE venues ALTER COLUMN updated_at SET DEFAULT CURRENT_TIMESTAMP;
-        ALTER TABLE venues ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP;
-      END $$;
-    `;
-
-    try {
-      await query(createTableQuery);
-      console.log('✅ Venues table created/verified successfully');
-    } catch (error) {
-      console.error('❌ Error creating venues table:', error.message);
-      throw error;
-    }
-=======
     // Additional computed fields
     this.ownerName = venueData.owner?.name;
     this.ownerEmail = venueData.owner?.email;
     this.startingPrice = venueData.startingPrice;
     this.availableSports = venueData.availableSports;
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
   }
 
   // Create a new venue
@@ -155,33 +39,11 @@ class Venue {
       location,
       amenities = [],
       photos = [],
-      contactPhone,
-      contactEmail,
       ownerId,
       contactEmail,
       contactPhone,
     } = venueData;
 
-<<<<<<< HEAD
-    const insertQuery = `
-      INSERT INTO venues (name, description, address, location, amenities, photos, contact_phone, contact_email, owner_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING *
-    `;
-
-    const result = await query(insertQuery, [
-      name,
-      description,
-      address,
-      location,
-      JSON.stringify(amenities || []),  // Convert to JSON string for JSONB column
-      JSON.stringify(photos || []),     // Convert to JSON string for JSONB column
-      contactPhone,
-      contactEmail,
-      ownerId,
-    ]);
-    return new Venue(result.rows[0]);
-=======
     const venue = await prisma.venue.create({
       data: {
         name,
@@ -205,7 +67,6 @@ class Venue {
     });
 
     return new Venue(venue);
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
   }
 
   // Find venue by ID
