@@ -9,6 +9,7 @@ export const getAllVenues = async (req, res) => {
       search,
       location,
       sportType,
+      venueType, // indoor/outdoor
       minRating,
       maxPrice,
       minPrice,
@@ -25,6 +26,7 @@ export const getAllVenues = async (req, res) => {
     if (search) filters.search = search;
     if (location) filters.location = location;
     if (sportType) filters.sportType = sportType;
+    if (venueType) filters.venueType = venueType; // indoor/outdoor
     if (minRating) filters.minRating = parseFloat(minRating);
     if (amenities) {
       filters.amenities = Array.isArray(amenities) ? amenities : [amenities];
@@ -102,6 +104,19 @@ export const getAllVenues = async (req, res) => {
       whereClause += ` AND v.amenities && $${paramCount}`;
       params.push(filters.amenities);
       paramCount++;
+    }
+
+    // Apply venue type filter (indoor/outdoor)
+    if (venueType && venueType !== 'all') {
+      if (venueType === 'indoor') {
+        whereClause += ` AND (v.amenities @> '["Indoor", "AC", "Air Conditioning"]'::jsonb OR 
+                              v.name ILIKE '%indoor%' OR 
+                              v.description ILIKE '%indoor%')`;
+      } else if (venueType === 'outdoor') {
+        whereClause += ` AND NOT (v.amenities @> '["Indoor", "AC", "Air Conditioning"]'::jsonb OR 
+                                  v.name ILIKE '%indoor%' OR 
+                                  v.description ILIKE '%indoor%')`;
+      }
     }
 
     // Determine sort order

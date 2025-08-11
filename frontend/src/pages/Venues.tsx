@@ -25,8 +25,9 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState, useMemo } from "react";
-import { useVenues, useSports } from "@/services/venueService";
+import { useVenues } from "@/services/venueService";
 import { VenueSearchParams, Venue } from "@/lib/types";
+import { getVenueSportImage } from "@/utils/sportImages";
 
 const VenueCard = ({
   venue,
@@ -59,10 +60,25 @@ const VenueCard = ({
 
   return (
     <Card className="h-full hover:shadow-lg transition-shadow">
-      <div className="relative h-48 bg-gradient-to-br from-blue-500 to-purple-600">
+      <div className="relative h-48 overflow-hidden">
+        <img 
+          src={getVenueSportImage(
+            venue.available_sports,
+            venue.amenities,
+            venue.name,
+            venue.description
+          )} 
+          alt={venue.name}
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = "/placeholder.svg";
+          }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
         <div className="absolute top-3 left-3">
           <Badge variant="secondary" className="bg-white/90 text-black">
-            {venue.amenities?.[0] || "Premium"}
+            {venue.amenities?.includes('Indoor') || venue.amenities?.includes('AC') ? 'Indoor' : 'Outdoor'}
           </Badge>
         </div>
         <div className="absolute top-3 right-3">
@@ -73,6 +89,13 @@ const VenueCard = ({
             {venue.isApproved ? "Verified" : "Pending"}
           </Badge>
         </div>
+        {venue.available_sports && venue.available_sports.length > 0 && (
+          <div className="absolute bottom-3 left-3">
+            <Badge variant="default" className="bg-blue-600 text-white">
+              {venue.available_sports[0]}
+            </Badge>
+          </div>
+        )}
       </div>
 
       <CardHeader className="pb-2">
@@ -100,19 +123,30 @@ const VenueCard = ({
               </span>
             </div>
             <div className="text-right">
-              <p className="text-lg font-bold">₹300/hr</p>
+              <p className="text-lg font-bold">
+                ₹{venue.min_price || 300}/hr
+              </p>
               <p className="text-xs text-gray-500">Starting from</p>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-1">
-            {venue.amenities
-              ?.slice(0, 3)
-              .map((amenity: string, index: number) => (
+            {venue.available_sports && venue.available_sports.length > 0 ? (
+              // Show available sports
+              venue.available_sports.slice(0, 3).map((sport: string, index: number) => (
+                <Badge key={index} variant="outline" className="text-xs">
+                  {sport}
+                </Badge>
+              ))
+            ) : venue.amenities?.length > 0 ? (
+              // Fallback to amenities
+              venue.amenities.slice(0, 3).map((amenity: string, index: number) => (
                 <Badge key={index} variant="outline" className="text-xs">
                   {amenity}
                 </Badge>
-              )) || (
+              ))
+            ) : (
+              // Default amenities
               <>
                 <Badge variant="outline" className="text-xs">
                   AC
@@ -121,6 +155,11 @@ const VenueCard = ({
                   Parking
                 </Badge>
               </>
+            )}
+            {venue.available_sports && venue.available_sports.length > 3 && (
+              <Badge variant="outline" className="text-xs">
+                +{venue.available_sports.length - 3} more
+              </Badge>
             )}
           </div>
 
@@ -136,15 +175,30 @@ const VenueCard = ({
 const Venues = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSports, setSelectedSports] = useState<string[]>([]);
-  const [selectedType, setSelectedType] = useState("all");
+  const [selectedType, setSelectedType] = useState("all"); // indoor/outdoor
   const [priceRange, setPriceRange] = useState([2000]);
   const [minRating, setMinRating] = useState("all");
   const [sortBy, setSortBy] = useState<
     "rating" | "price" | "distance" | "name"
   >("rating");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc"); // New sort order state
   const [currentPage, setCurrentPage] = useState(1);
 
   const itemsPerPage = 9;
+
+  // Extended sports list as requested
+  const availableSports = [
+    "Cricket",
+    "Football", 
+    "Volleyball",
+    "Tennis",
+    "Swimming",
+    "Table Tennis",
+    "Badminton",
+    "Basketball",
+    "Hockey",
+    "Squash"
+  ];
 
   // Prepare search parameters
   const searchParams: VenueSearchParams = useMemo(() => {
@@ -152,15 +206,17 @@ const Venues = () => {
       limit: itemsPerPage,
       offset: (currentPage - 1) * itemsPerPage,
       sortBy,
+      sortOrder, // Include sort order
     };
 
     if (searchQuery) params.search = searchQuery;
     if (selectedSports.length > 0) params.sportType = selectedSports[0]; // API might accept only one sport
+    if (selectedType !== "all") params.venueType = selectedType; // indoor/outdoor filter
     if (minRating !== "all") params.minRating = parseFloat(minRating);
     if (priceRange[0] < 2000) params.maxPrice = priceRange[0];
 
     return params;
-  }, [searchQuery, selectedSports, minRating, priceRange, sortBy, currentPage]);
+  }, [searchQuery, selectedSports, selectedType, minRating, priceRange, sortBy, sortOrder, currentPage]);
 
   // Fetch data using React Query
   const {
@@ -169,7 +225,6 @@ const Venues = () => {
     error: venuesError,
     refetch,
   } = useVenues(searchParams);
-  const { data: sports, isLoading: sportsLoading } = useSports();
 
   // Handle loading and error states
   if (venuesError) {
@@ -196,14 +251,6 @@ const Venues = () => {
   const venues = venuesData?.items || [];
   const totalVenues = venuesData?.pagination?.total || 0;
   const hasNextPage = venuesData?.pagination?.hasNext || false;
-  const sportsList = sports?.map((sport) => sport.name) || [
-    "Badminton",
-    "Tennis",
-    "Football",
-    "Cricket",
-    "Hockey",
-    "Table Tennis",
-  ];
 
   const handleSportToggle = (sport: string) => {
     setSelectedSports((prev) =>
@@ -219,6 +266,7 @@ const Venues = () => {
     setPriceRange([2000]);
     setMinRating("all");
     setSortBy("rating");
+    setSortOrder("desc");
     setCurrentPage(1);
   };
 
@@ -288,34 +336,49 @@ const Venues = () => {
                   <label className="text-sm font-medium mb-3 block">
                     Sports
                   </label>
-                  {sportsLoading ? (
-                    <div className="space-y-2">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <Skeleton key={i} className="h-6 w-full" />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {sportsList.map((sport) => (
-                        <div
-                          key={sport}
-                          className="flex items-center space-x-2"
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {availableSports.map((sport) => (
+                      <div
+                        key={sport}
+                        className="flex items-center space-x-2"
+                      >
+                        <Checkbox
+                          id={sport}
+                          checked={selectedSports.includes(sport)}
+                          onCheckedChange={() => handleSportToggle(sport)}
+                        />
+                        <Label
+                          htmlFor={sport}
+                          className="text-sm cursor-pointer"
                         >
-                          <Checkbox
-                            id={sport}
-                            checked={selectedSports.includes(sport)}
-                            onCheckedChange={() => handleSportToggle(sport)}
-                          />
-                          <Label
-                            htmlFor={sport}
-                            className="text-sm cursor-pointer"
-                          >
-                            {sport}
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                          {sport}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Venue Type Filter (Indoor/Outdoor) */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Venue Type
+                  </label>
+                  <Select
+                    value={selectedType}
+                    onValueChange={(value) => {
+                      setSelectedType(value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="indoor">Indoor</SelectItem>
+                      <SelectItem value="outdoor">Outdoor</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Price Range */}
@@ -375,14 +438,27 @@ const Venues = () => {
                     value: "rating" | "price" | "distance" | "name"
                   ) => setSortBy(value)}
                 >
-                  <SelectTrigger className="w-48">
+                  <SelectTrigger className="w-40">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="rating">Highest Rated</SelectItem>
+                    <SelectItem value="rating">Rating</SelectItem>
                     <SelectItem value="price">Price</SelectItem>
                     <SelectItem value="name">Name</SelectItem>
                     <SelectItem value="distance">Distance</SelectItem>
+                  </SelectContent>
+                </Select>
+                
+                <Select
+                  value={sortOrder}
+                  onValueChange={(value: "asc" | "desc") => setSortOrder(value)}
+                >
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="desc">High to Low</SelectItem>
+                    <SelectItem value="asc">Low to High</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

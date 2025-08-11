@@ -63,12 +63,13 @@ export const useNotifications = (params: NotificationSearchParams = {}) => {
   });
 };
 
-export const useUnreadNotificationCount = () => {
+export const useUnreadNotificationCount = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ["notifications", "unreadCount"],
     queryFn: notificationApi.getUnreadCount,
     staleTime: 30 * 1000, // 30 seconds
     refetchInterval: 60 * 1000, // Refetch every minute
+    enabled: options?.enabled !== false, // Default to enabled unless explicitly disabled
   });
 };
 

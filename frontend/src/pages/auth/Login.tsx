@@ -99,24 +99,6 @@ const Login = () => {
             <h2 className="text-xl font-semibold mb-8">LOGIN</h2>
           </div>
 
-          {/* Demo Credentials Info */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <h3 className="text-sm font-semibold text-blue-800 mb-2">
-              Demo Credentials:
-            </h3>
-            <div className="text-xs text-blue-700 space-y-1">
-              <div>
-                <strong>User:</strong> user@quickcourt.com / user123
-              </div>
-              <div>
-                <strong>Owner:</strong> owner@quickcourt.com / owner123
-              </div>
-              <div>
-                <strong>Admin:</strong> admin@quickcourt.com / admin123
-              </div>
-            </div>
-          </div>
-
           <form onSubmit={handleLogin} className="space-y-6">
             {/* Email */}
             <div className="space-y-2">

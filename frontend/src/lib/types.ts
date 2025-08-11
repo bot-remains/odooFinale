@@ -40,6 +40,10 @@ export interface Venue {
   contactPhone: string;
   contactEmail: string;
   amenities: string[];
+  available_sports?: string[]; // Sports available at this venue
+  min_price?: number; // Minimum price from courts
+  max_price?: number; // Maximum price from courts
+  courts_count?: number; // Number of courts
   rating: number;
   totalReviews: number;
   isApproved: boolean;
@@ -58,9 +62,11 @@ export interface VenueSearchParams {
   search?: string;
   location?: string;
   sportType?: string;
+  venueType?: string; // indoor/outdoor
   minRating?: number;
   maxPrice?: number;
   sortBy?: "rating" | "price" | "distance" | "name";
+  sortOrder?: "asc" | "desc"; // sort direction
   limit?: number;
   offset?: number;
 }
