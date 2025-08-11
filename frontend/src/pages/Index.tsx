@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Search, MapPin, Star, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 const popularSports = [
   { name: "Badminton", image: "/placeholder.svg" },
@@ -85,13 +86,7 @@ const Index = () => {
             <div>
               <Card className="bg-white border border-gray-300 shadow-sm">
                 <CardContent className="p-6">
-                  <h2 className="text-xl font-semibold mb-4 text-gray-900">
-                    FIND PLAYERS & VENUES NEARBY
-                  </h2>
-                  <p className="text-gray-600 mb-6">
-                    Seamlessly explore sports venues and play with sports enthusiasts just like you!
-                  </p>
-                  <div className="relative">
+                  <div className="relative mb-6">
                     <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <Input 
                       value={searchCity}
@@ -118,6 +113,12 @@ const Index = () => {
                       </div>
                     )}
                   </div>
+                  <h2 className="text-xl font-semibold mb-4 text-gray-900">
+                    FIND PLAYERS & VENUES NEARBY
+                  </h2>
+                  <p className="text-gray-600">
+                    Seamlessly explore sports venues and play with sports enthusiasts just like you!
+                  </p>
                 </CardContent>
               </Card>
             </div>
@@ -142,8 +143,10 @@ const Index = () => {
           <div className="mb-16">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Book Venues</h2>
-              <Button variant="link" className="text-green-600 hover:text-green-700">
-                See all venues →
+              <Button variant="link" className="text-green-600 hover:text-green-700" asChild>
+                <Link to="/venues">
+                  See all venues →
+                </Link>
               </Button>
             </div>
             <div className="relative">
