@@ -1,7 +1,6 @@
-import Venue from '../models/Venue.js';
-import Court from '../models/Court.js';
-import { validationResult } from 'express-validator';
+import prisma from '../config/prisma.js';
 
+<<<<<<< HEAD
 // Helper function to get sport description
 const getSportDescription = (sportName) => {
   const sport = sportName.toLowerCase();
@@ -19,176 +18,132 @@ const getSportDescription = (sportName) => {
 };
 
 // Get all approved venues with search and filters
+=======
+// Search venues (simplified)
+>>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
 export const getAllVenues = async (req, res) => {
   try {
     const {
       search,
-      location,
-      sportType,
-      venueType, // indoor/outdoor
-      minRating,
-      maxPrice,
-      minPrice,
+      city,
+      sport,
+      priceMin,
+      priceMax,
+      rating,
       amenities,
-      sortBy = 'rating',
-      sortOrder = 'desc',
+      sortBy,
       limit = 20,
       offset = 0,
     } = req.query;
 
-    // Build filters object
-    const filters = {};
+    let whereClause = {
+      isApproved: true,
+    };
 
-    if (search) filters.search = search;
-    if (location) filters.location = location;
-    if (sportType) filters.sportType = sportType;
-    if (venueType) filters.venueType = venueType; // indoor/outdoor
-    if (minRating) filters.minRating = parseFloat(minRating);
-    if (amenities) {
-      filters.amenities = Array.isArray(amenities) ? amenities : [amenities];
-    }
-
-    // Get venues with courts and availability
-    const { query } = await import('../config/database.js');
-
-    let whereClause = 'WHERE v.is_approved = true';
-    const params = [];
-    let paramCount = 1;
-
-    // Apply search filter
+    // Build search filters
     if (search) {
-      whereClause += ` AND (v.name ILIKE $${paramCount} OR v.description ILIKE $${paramCount} OR v.location ILIKE $${paramCount})`;
-      params.push(`%${search}%`);
-      paramCount++;
+      whereClause.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ];
     }
 
-    // Apply location filter
-    if (location) {
-      whereClause += ` AND v.location ILIKE $${paramCount}`;
-      params.push(`%${location}%`);
-      paramCount++;
+    if (city) {
+      whereClause.city = { contains: city, mode: 'insensitive' };
     }
 
-    // Apply rating filter
-    if (minRating) {
-      whereClause += ` AND v.rating >= $${paramCount}`;
-      params.push(minRating);
-      paramCount++;
+    if (sport) {
+      whereClause.courts = {
+        some: {
+          sportType: sport,
+          isActive: true,
+        },
+      };
     }
 
-    // Apply sport type filter (through courts)
-    if (sportType) {
-      whereClause += ` AND EXISTS (
-        SELECT 1 FROM courts c
-        WHERE c.venue_id = v.id
-        AND c.sport_type = $${paramCount}
-        AND c.is_active = true
-      )`;
-      params.push(sportType);
-      paramCount++;
-    }
+    if (priceMin || priceMax) {
+      const priceFilter = {};
+      if (priceMin) priceFilter.gte = parseFloat(priceMin);
+      if (priceMax) priceFilter.lte = parseFloat(priceMax);
 
-    // Apply price filters (through courts)
-    if (minPrice || maxPrice) {
-      let priceCondition = '';
-      if (minPrice && maxPrice) {
-        priceCondition = `AND c.price_per_hour BETWEEN $${paramCount} AND $${paramCount + 1}`;
-        params.push(minPrice, maxPrice);
-        paramCount += 2;
-      } else if (minPrice) {
-        priceCondition = `AND c.price_per_hour >= $${paramCount}`;
-        params.push(minPrice);
-        paramCount++;
-      } else if (maxPrice) {
-        priceCondition = `AND c.price_per_hour <= $${paramCount}`;
-        params.push(maxPrice);
-        paramCount++;
-      }
-
-      if (priceCondition) {
-        whereClause += ` AND EXISTS (
-          SELECT 1 FROM courts c
-          WHERE c.venue_id = v.id
-          AND c.is_active = true
-          ${priceCondition}
-        )`;
+      if (whereClause.courts) {
+        // If we already have a courts filter, add price to it
+        whereClause.courts.some.pricePerHour = priceFilter;
+      } else {
+        // Create a new courts filter for price
+        whereClause.courts = {
+          some: {
+            pricePerHour: priceFilter,
+            isActive: true,
+          },
+        };
       }
     }
 
-    // Apply amenities filter
-    if (amenities && filters.amenities.length > 0) {
-      whereClause += ` AND v.amenities && $${paramCount}`;
-      params.push(filters.amenities);
-      paramCount++;
+    if (rating) {
+      whereClause.rating = { gte: parseFloat(rating) };
     }
 
-    // Apply venue type filter (indoor/outdoor)
-    if (venueType && venueType !== 'all') {
-      if (venueType === 'indoor') {
-        whereClause += ` AND (v.amenities @> '["Indoor", "AC", "Air Conditioning"]'::jsonb OR 
-                              v.name ILIKE '%indoor%' OR 
-                              v.description ILIKE '%indoor%')`;
-      } else if (venueType === 'outdoor') {
-        whereClause += ` AND NOT (v.amenities @> '["Indoor", "AC", "Air Conditioning"]'::jsonb OR 
-                                  v.name ILIKE '%indoor%' OR 
-                                  v.description ILIKE '%indoor%')`;
-      }
+    if (amenities) {
+      const amenityList = amenities.split(',');
+      whereClause.amenities = { hasEvery: amenityList };
     }
 
-    // Determine sort order
-    let orderClause = 'ORDER BY v.rating DESC, v.created_at DESC';
-    if (sortBy === 'price') {
-      orderClause = `ORDER BY min_price ${sortOrder.toUpperCase()}, v.rating DESC`;
+    // Build sort order
+    let orderBy = { createdAt: 'desc' };
+    if (sortBy === 'price_asc' || sortBy === 'price_desc') {
+      // Price sorting not available for venues, fall back to rating
+      orderBy = { rating: 'desc' };
+    } else if (sortBy === 'rating') {
+      orderBy = { rating: 'desc' };
     } else if (sortBy === 'name') {
-      orderClause = `ORDER BY v.name ${sortOrder.toUpperCase()}`;
-    } else if (sortBy === 'location') {
-      orderClause = `ORDER BY v.location ${sortOrder.toUpperCase()}, v.rating DESC`;
+      orderBy = { name: 'asc' };
     }
 
-    params.push(limit, offset);
+    const venues = await prisma.venue.findMany({
+      where: whereClause,
+      include: {
+        courts: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            name: true,
+            sportType: true,
+          },
+        },
+        _count: {
+          select: {
+            reviews: true,
+          },
+        },
+      },
+      orderBy: orderBy,
+      take: parseInt(limit),
+      skip: parseInt(offset),
+    });
 
-    const venuesQuery = `
-      SELECT
-        v.*,
-        COUNT(DISTINCT c.id) as courts_count,
-        MIN(c.price_per_hour) as min_price,
-        MAX(c.price_per_hour) as max_price,
-        ARRAY_AGG(DISTINCT c.sport_type) FILTER (WHERE c.sport_type IS NOT NULL) as available_sports,
-        u.name as owner_name
-      FROM venues v
-      LEFT JOIN courts c ON v.id = c.venue_id AND c.is_active = true
-      LEFT JOIN users u ON v.owner_id = u.id
-      ${whereClause}
-      GROUP BY v.id, u.name
-      ${orderClause}
-      LIMIT $${paramCount} OFFSET $${paramCount + 1}
-    `;
-
-    const result = await query(venuesQuery, params);
-
-    // Get total count for pagination
-    const countQuery = `
-      SELECT COUNT(DISTINCT v.id) as total
-      FROM venues v
-      LEFT JOIN courts c ON v.id = c.venue_id AND c.is_active = true
-      ${whereClause.replace(/GROUP BY.*|ORDER BY.*|LIMIT.*|OFFSET.*/g, '')}
-    `;
-    const countResult = await query(countQuery, params.slice(0, -2));
+    const total = await prisma.venue.count({
+      where: whereClause,
+    });
 
     res.json({
       success: true,
       data: {
+<<<<<<< HEAD
         items: result.rows,
+=======
+        venues,
+>>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
         pagination: {
-          total: parseInt(countResult.rows[0].total),
+          total,
           limit: parseInt(limit),
           offset: parseInt(offset),
-          hasNext: parseInt(offset) + parseInt(limit) < parseInt(countResult.rows[0].total),
+          hasNext: parseInt(offset) + parseInt(limit) < total,
         },
       },
     });
   } catch (error) {
-    console.error('Get venues error:', error);
+    console.error('Get all venues error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch venues',
@@ -197,65 +152,58 @@ export const getAllVenues = async (req, res) => {
   }
 };
 
-// Get venue details by ID with courts and availability
+// Search venues (simplified) - alias for backwards compatibility
+export const searchVenues = getAllVenues;
+
+// Get venue details (simplified)
 export const getVenueDetails = async (req, res) => {
   try {
     const { venueId } = req.params;
-    const { date } = req.query;
 
-    const venue = await Venue.findById(venueId);
-    if (!venue || !venue.isApproved) {
+    const venue = await prisma.venue.findFirst({
+      where: {
+        id: parseInt(venueId),
+        isApproved: true,
+      },
+      include: {
+        courts: {
+          where: { isActive: true },
+          include: {
+            timeSlots: true,
+          },
+        },
+        reviews: {
+          include: {
+            user: {
+              select: {
+                name: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 5,
+        },
+        owner: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (!venue) {
       return res.status(404).json({
         success: false,
-        message: 'Venue not found or not available',
+        message: 'Venue not found',
       });
     }
 
-    // Get courts with availability for the specified date
-    const courts = await Court.findByVenue(venueId);
-
-    // Get availability for each court if date is provided
-    const courtsWithAvailability = await Promise.all(
-      courts.map(async (court) => {
-        const courtData = court.toJSON();
-
-        if (date) {
-          try {
-            const availableSlots = await court.getAvailableSlots(date);
-            courtData.availableSlots = availableSlots;
-          } catch (error) {
-            console.warn(`Failed to get availability for court ${court.id}:`, error.message);
-            courtData.availableSlots = [];
-          }
-        }
-
-        return courtData;
-      })
-    );
-
-    // Get venue reviews
-    const { query } = await import('../config/database.js');
-    const reviewsQuery = `
-      SELECT
-        r.*,
-        u.name as user_name,
-        u.avatar as user_avatar
-      FROM reviews r
-      JOIN users u ON r.user_id = u.id
-      WHERE r.venue_id = $1
-      ORDER BY r.created_at DESC
-      LIMIT 10
-    `;
-    const reviewsResult = await query(reviewsQuery, [venueId]);
-
     res.json({
       success: true,
-      data: {
-        venue: venue.toJSON(),
-        courts: courtsWithAvailability,
-        reviews: reviewsResult.rows,
-        requestedDate: date,
-      },
+      data: venue,
     });
   } catch (error) {
     console.error('Get venue details error:', error);
@@ -267,182 +215,114 @@ export const getVenueDetails = async (req, res) => {
   }
 };
 
-// Get courts by sport type with availability
-export const getCourtsBySport = async (req, res) => {
+// Get available time slots (simplified)
+export const getAvailableTimeSlots = async (req, res) => {
   try {
-    const { sportType } = req.params;
-    const { location, date, startTime, endTime, maxPrice, limit = 20, offset = 0 } = req.query;
+    const { venueId, courtId, date } = req.query;
 
-    const courts = await Court.findBySportType(sportType, limit, offset);
+    if (!venueId || !courtId || !date) {
+      return res.status(400).json({
+        success: false,
+        message: 'Venue ID, court ID, and date are required',
+      });
+    }
 
-    // Filter and enhance with availability data
-    const courtsWithDetails = await Promise.all(
-      courts.map(async (court) => {
-        const courtData = {
-          ...court.toJSON(),
-          venue_name: court.venue_name,
-          venue_location: court.venue_location,
-          venue_rating: court.venue_rating,
-        };
+    // Get existing bookings for the date
+    const existingBookings = await prisma.booking.findMany({
+      where: {
+        venueId: parseInt(venueId),
+        courtId: parseInt(courtId),
+        bookingDate: new Date(date),
+        status: { not: 'cancelled' },
+      },
+      select: {
+        startTime: true,
+        endTime: true,
+      },
+    });
 
-        // Apply location filter
-        if (location && !court.venue_location.toLowerCase().includes(location.toLowerCase())) {
-          return null;
-        }
+    // Get court's time slots
+    const court = await prisma.court.findFirst({
+      where: {
+        id: parseInt(courtId),
+        venueId: parseInt(venueId),
+        isActive: true,
+      },
+      include: {
+        timeSlots: {
+          orderBy: {
+            startTime: 'asc',
+          },
+        },
+      },
+    });
 
-        // Apply price filter
-        if (maxPrice && court.pricePerHour > maxPrice) {
-          return null;
-        }
+    if (!court) {
+      return res.status(404).json({
+        success: false,
+        message: 'Court not found',
+      });
+    }
 
-        // Check availability if date and time are provided
-        if (date && startTime && endTime) {
-          try {
-            const isAvailable = await court.checkAvailability(date, startTime, endTime);
-            courtData.isAvailable = isAvailable;
-
-            if (!isAvailable) {
-              courtData.nextAvailableSlot = await findNextAvailableSlot(
-                court,
-                date,
-                startTime,
-                endTime
-              );
-            }
-          } catch (error) {
-            console.warn(`Failed to check availability for court ${court.id}:`, error.message);
-            courtData.isAvailable = null;
-          }
-        }
-
-        return courtData;
-      })
-    );
-
-    // Filter out null results and unavailable courts if checking availability
-    const filteredCourts = courtsWithDetails.filter((court) => {
-      if (!court) return false;
-      if (date && startTime && endTime && court.isAvailable === false) {
-        return false; // Only show available courts when checking specific time
-      }
-      return true;
+    // Filter out booked time slots
+    const availableSlots = court.timeSlots.filter((slot) => {
+      return !existingBookings.some(
+        (booking) =>
+          (slot.startTime >= booking.startTime && slot.startTime < booking.endTime) ||
+          (slot.endTime > booking.startTime && slot.endTime <= booking.endTime)
+      );
     });
 
     res.json({
       success: true,
       data: {
-        sportType,
-        courts: filteredCourts,
-        filters: { location, date, startTime, endTime, maxPrice },
-        pagination: { limit: parseInt(limit), offset: parseInt(offset) },
+        court: {
+          id: court.id,
+          name: court.name,
+          sportType: court.sportType,
+        },
+        availableSlots,
+        date,
       },
     });
   } catch (error) {
-    console.error('Get courts by sport error:', error);
+    console.error('Get available time slots error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch courts',
+      message: 'Failed to fetch available time slots',
       error: error.message,
     });
   }
 };
 
-// Helper function to find next available slot
-const findNextAvailableSlot = async (
-  court,
-  requestedDate,
-  requestedStartTime,
-  requestedEndTime
-) => {
-  try {
-    const startDate = new Date(requestedDate);
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 7); // Check next 7 days
-
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
-      const availableSlots = await court.getAvailableSlots(dateStr);
-
-      // Find a slot that matches the requested duration
-      const requestedDuration = calculateDuration(requestedStartTime, requestedEndTime);
-      const matchingSlot = availableSlots.find((slot) => {
-        const slotDuration = calculateDuration(slot.startTime, slot.endTime);
-        return slotDuration >= requestedDuration;
-      });
-
-      if (matchingSlot) {
-        return {
-          date: dateStr,
-          startTime: matchingSlot.startTime,
-          endTime: matchingSlot.endTime,
-          price: matchingSlot.price,
-        };
-      }
-    }
-
-    return null; // No available slot found in next 7 days
-  } catch (error) {
-    console.warn('Failed to find next available slot:', error.message);
-    return null;
-  }
-};
-
-// Helper function to calculate duration in hours
-const calculateDuration = (startTime, endTime) => {
-  const start = new Date(`2000-01-01T${startTime}:00`);
-  const end = new Date(`2000-01-01T${endTime}:00`);
-  return (end - start) / (1000 * 60 * 60);
-};
-
-// Get popular venues (trending, most booked, highest rated)
+// Get popular venues (simplified)
 export const getPopularVenues = async (req, res) => {
   try {
-    const { type = 'rating', limit = 10 } = req.query;
+    const { limit = 10 } = req.query;
 
-    const { query } = await import('../config/database.js');
-
-    let orderClause;
-    let selectClause = `
-      SELECT
-        v.*,
-        COUNT(DISTINCT c.id) as courts_count,
-        MIN(c.price_per_hour) as min_price,
-        ARRAY_AGG(DISTINCT c.sport_type) FILTER (WHERE c.sport_type IS NOT NULL) as available_sports
-    `;
-
-    switch (type) {
-      case 'bookings':
-        selectClause += `, COUNT(DISTINCT b.id) as total_bookings`;
-        orderClause = 'ORDER BY total_bookings DESC, v.rating DESC';
-        break;
-      case 'recent':
-        orderClause = 'ORDER BY v.created_at DESC, v.rating DESC';
-        break;
-      case 'rating':
-      default:
-        orderClause = 'ORDER BY v.rating DESC, v.total_reviews DESC';
-        break;
-    }
-
-    const popularQuery = `
-      ${selectClause}
-      FROM venues v
-      LEFT JOIN courts c ON v.id = c.venue_id AND c.is_active = true
-      LEFT JOIN bookings b ON c.id = b.court_id AND b.status = 'confirmed'
-      WHERE v.is_approved = true
-      GROUP BY v.id
-      ${orderClause}
-      LIMIT $1
-    `;
-
-    const result = await query(popularQuery, [limit]);
+    const venues = await prisma.venue.findMany({
+      where: {
+        isApproved: true,
+      },
+      include: {
+        _count: {
+          select: {
+            bookings: {
+              where: {
+                status: 'confirmed',
+              },
+            },
+            reviews: true,
+          },
+        },
+      },
+      orderBy: [{ rating: 'desc' }, { totalReviews: 'desc' }],
+      take: parseInt(limit),
+    });
 
     res.json({
       success: true,
-      data: {
-        type,
-        venues: result.rows,
-      },
+      data: venues,
     });
   } catch (error) {
     console.error('Get popular venues error:', error);
@@ -454,11 +334,23 @@ export const getPopularVenues = async (req, res) => {
   }
 };
 
-// Get available sports types
+// Get available sports (simplified)
 export const getAvailableSports = async (req, res) => {
   try {
-    const { query } = await import('../config/database.js');
+    const courts = await prisma.court.findMany({
+      where: {
+        isActive: true,
+        venue: {
+          isApproved: true,
+        },
+      },
+      select: {
+        sportType: true,
+      },
+      distinct: ['sportType'],
+    });
 
+<<<<<<< HEAD
     const sportsQuery = `
       SELECT
         c.sport_type as name,
@@ -476,6 +368,10 @@ export const getAvailableSports = async (req, res) => {
     `;
 
     const result = await query(sportsQuery);
+=======
+    // Extract unique sports
+    const uniqueSports = courts.map((court) => court.sportType).sort();
+>>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
 
     // Add descriptions for sports
     const sportsWithDescriptions = result.rows.map(sport => ({
@@ -485,7 +381,11 @@ export const getAvailableSports = async (req, res) => {
 
     res.json({
       success: true,
+<<<<<<< HEAD
       data: sportsWithDescriptions,
+=======
+      data: uniqueSports,
+>>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
     });
   } catch (error) {
     console.error('Get available sports error:', error);
@@ -497,6 +397,7 @@ export const getAvailableSports = async (req, res) => {
   }
 };
 
+<<<<<<< HEAD
 // Get sport pricing details by venue and sport
 export const getSportPricing = async (req, res) => {
   try {
@@ -567,10 +468,51 @@ export const getSportPricing = async (req, res) => {
         }
       },
       operatingHours: court.operating_hours || court.venue_operating_hours
+=======
+// Get venue statistics (simplified)
+export const getVenueStatistics = async (req, res) => {
+  try {
+    const { venueId } = req.params;
+
+    const venue = await prisma.venue.findFirst({
+      where: {
+        id: parseInt(venueId),
+        isApproved: true,
+      },
+      include: {
+        _count: {
+          select: {
+            bookings: {
+              where: { status: 'confirmed' },
+            },
+            reviews: true,
+            courts: {
+              where: { isActive: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!venue) {
+      return res.status(404).json({
+        success: false,
+        message: 'Venue not found',
+      });
+    }
+
+    const stats = {
+      total_bookings: venue._count.bookings,
+      total_reviews: venue._count.reviews,
+      total_courts: venue._count.courts,
+      average_rating: venue.rating,
+      total_revenue: 0, // Calculate if needed
+>>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
     };
 
     res.json({
       success: true,
+<<<<<<< HEAD
       data: pricingData,
     });
   } catch (error) {
@@ -578,6 +520,83 @@ export const getSportPricing = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch sport pricing',
+=======
+      data: stats,
+    });
+  } catch (error) {
+    console.error('Get venue statistics error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch venue statistics',
+      error: error.message,
+    });
+  }
+};
+
+// Get courts by sport (simplified)
+export const getCourtsBySport = async (req, res) => {
+  try {
+    const { sport } = req.params;
+    const { city, limit = 20, offset = 0 } = req.query;
+
+    let whereClause = {
+      isActive: true,
+      sportType: sport,
+      venue: {
+        isApproved: true,
+      },
+    };
+
+    if (city) {
+      whereClause.venue.city = { contains: city, mode: 'insensitive' };
+    }
+
+    const courts = await prisma.court.findMany({
+      where: whereClause,
+      include: {
+        venue: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            city: true,
+            rating: true,
+            pricePerHour: true,
+          },
+        },
+      },
+      orderBy: {
+        venue: {
+          rating: 'desc',
+        },
+      },
+      take: parseInt(limit),
+      skip: parseInt(offset),
+    });
+
+    const total = await prisma.court.count({
+      where: whereClause,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        courts,
+        sport,
+        pagination: {
+          total,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          hasNext: parseInt(offset) + parseInt(limit) < total,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Get courts by sport error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch courts',
+>>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
       error: error.message,
     });
   }

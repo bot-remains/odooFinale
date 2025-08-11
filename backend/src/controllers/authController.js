@@ -1,4 +1,4 @@
-import User from '../models/User.js';
+import UserPrisma from '../models/User.js';
 import jwt from 'jsonwebtoken';
 import emailService from '../services/emailService.js';
 import tempUserStorage from '../services/tempUserStorage.js';
@@ -16,7 +16,7 @@ export const register = async (req, res) => {
     const { name, email, password, role = 'user' } = req.body;
 
     // Check if user already exists in database
-    const existingUser = await User.findByEmail(email);
+    const existingUser = await UserPrisma.findByEmail(email);
     if (existingUser) {
       return res.status(400).json({
         success: false,
@@ -90,7 +90,7 @@ export const verifyOTP = async (req, res) => {
     }
 
     // Check if user was created in the meantime
-    const existingUser = await User.findByEmail(email);
+    const existingUser = await UserPrisma.findByEmail(email);
     if (existingUser) {
       // Clean up temporary data
       tempUserStorage.remove(email);
@@ -100,37 +100,28 @@ export const verifyOTP = async (req, res) => {
       });
     }
 
-    // Create user in database (already verified)
-    const user = await User.create({
+    // Create user in database
+    const user = await UserPrisma.create({
       name: tempUserData.name,
       email: tempUserData.email,
       password: tempUserData.password,
       role: tempUserData.role,
-      isVerified: true, // Mark as verified since OTP was confirmed
+      isVerified: true,
     });
 
-    // Remove temporary data
+    // Clean up temporary data
     tempUserStorage.remove(email);
 
-    // Send welcome email
-    try {
-      await emailService.sendWelcomeEmail(user.email, user.name);
-      console.log('✅ Welcome email sent to:', user.email);
-    } catch (emailError) {
-      console.error('❌ Welcome email error:', emailError.message);
-      // Continue even if welcome email fails
-    }
-
-    // Generate token for verified user
+    // Generate JWT token
     const token = generateToken({
-      userId: user.id,
+      id: user.id,
       email: user.email,
       role: user.role,
     });
 
-    res.json({
+    res.status(201).json({
       success: true,
-      message: 'Email verified successfully! Registration completed.',
+      message: 'User registered and verified successfully',
       data: {
         user: user.toJSON(),
         token,
@@ -139,16 +130,9 @@ export const verifyOTP = async (req, res) => {
   } catch (error) {
     console.error('OTP verification error:', error);
 
-    if (error.message === 'User already exists with this email') {
-      return res.status(400).json({
-        success: false,
-        message: error.message,
-      });
-    }
-
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: 'Failed to verify OTP',
     });
   }
 };
@@ -165,54 +149,49 @@ export const resendOTP = async (req, res) => {
       });
     }
 
-    // Check if user already exists in database
-    const existingUser = await User.findByEmail(email);
+    // Check if user already exists
+    const existingUser = await UserPrisma.findByEmail(email);
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'User already exists and is registered. Please try logging in.',
+        message: 'User already exists with this email',
       });
     }
 
-    // Check if there's temporary user data
-    const tempUser = tempUserStorage.get(email);
-    if (!tempUser) {
-      return res.status(404).json({
+    // Check if there's temporary data for this email
+    if (!tempUserStorage.hasTempUser(email)) {
+      return res.status(400).json({
         success: false,
-        message: 'Registration session not found. Please start registration again.',
+        message: 'No pending registration found for this email',
       });
     }
 
-    // Regenerate OTP
-    const newOtpCode = tempUserStorage.regenerateOTP(email);
+    // Generate new OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Send new OTP email
+    // Update OTP in temporary storage
+    tempUserStorage.updateOTP(email, otpCode);
+
+    // Send OTP email
     try {
-      await emailService.sendOTPEmail(email, tempUser.name, newOtpCode);
-      console.log('✅ New OTP email sent to:', email);
+      const tempUserData = tempUserStorage.get(email);
+      await emailService.sendOTPEmail(email, tempUserData.name, otpCode);
+      console.log('✅ OTP Email resent successfully to:', email);
     } catch (emailError) {
       console.error('❌ Email sending error:', emailError.message);
-      console.log('📧 New OTP Code (email failed):', newOtpCode);
-      // Continue even if email fails, but inform user
+      console.log('📧 OTP Code (email failed):', otpCode);
     }
 
-    res.json({
+    res.status(200).json({
       success: true,
-      message: 'New OTP sent to your email',
+      message: 'OTP resent successfully',
     });
   } catch (error) {
     console.error('Resend OTP error:', error);
 
-    if (error.message === 'Registration session not found') {
-      return res.status(404).json({
-        success: false,
-        message: error.message,
-      });
-    }
-
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: 'Failed to resend OTP',
     });
   }
 };
@@ -222,12 +201,19 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user by email (including password for comparison)
-    const user = await User.findByEmail(email);
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required',
+      });
+    }
+
+    // Find user by email
+    const user = await UserPrisma.findByEmail(email);
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials',
+        message: 'Invalid email or password',
       });
     }
 
@@ -235,30 +221,46 @@ export const login = async (req, res) => {
     if (!user.isActive) {
       return res.status(401).json({
         success: false,
-        message: 'Account is deactivated',
+        message: 'Your account has been deactivated',
       });
     }
 
-    // Compare password
-    const isPasswordValid = await User.comparePassword(password, user.password);
-    if (!isPasswordValid) {
+    // Check if user is verified
+    if (!user.isVerified) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials',
+        message: 'Please verify your email before logging in',
+      });
+    }
+
+    // Check if user is suspended
+    if (user.suspendedAt) {
+      return res.status(401).json({
+        success: false,
+        message: user.suspensionReason || 'Your account has been suspended',
+      });
+    }
+
+    // Verify password
+    const isValidPassword = await UserPrisma.comparePassword(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password',
       });
     }
 
     // Update last login
     await user.updateLastLogin();
 
-    // Generate token
+    // Generate JWT token
     const token = generateToken({
-      userId: user.id,
+      id: user.id,
       email: user.email,
       role: user.role,
     });
 
-    res.json({
+    res.status(200).json({
       success: true,
       message: 'Login successful',
       data: {
@@ -268,9 +270,10 @@ export const login = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
+
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: 'Login failed',
     });
   }
 };
@@ -278,7 +281,7 @@ export const login = async (req, res) => {
 // Get user profile
 export const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId);
+    const user = await UserPrisma.findById(req.user.id);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -286,17 +289,19 @@ export const getProfile = async (req, res) => {
       });
     }
 
-    res.json({
+    res.status(200).json({
       success: true,
+      message: 'Profile retrieved successfully',
       data: {
         user: user.toJSON(),
       },
     });
   } catch (error) {
-    console.error('Profile error:', error);
+    console.error('Get profile error:', error);
+
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: 'Failed to get profile',
     });
   }
 };
@@ -304,9 +309,9 @@ export const getProfile = async (req, res) => {
 // Update user profile
 export const updateProfile = async (req, res) => {
   try {
-    const { name, email } = req.body;
-    const user = await User.findById(req.user.userId);
+    const { name, avatar } = req.body;
 
+    const user = await UserPrisma.findById(req.user.id);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -314,9 +319,12 @@ export const updateProfile = async (req, res) => {
       });
     }
 
-    const updatedUser = await user.update({ name, email });
+    const updatedUser = await user.update({
+      name: name || user.name,
+      avatar: avatar !== undefined ? avatar : user.avatar,
+    });
 
-    res.json({
+    res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
       data: {
@@ -325,9 +333,10 @@ export const updateProfile = async (req, res) => {
     });
   } catch (error) {
     console.error('Update profile error:', error);
+
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: 'Failed to update profile',
     });
   }
 };
@@ -336,8 +345,15 @@ export const updateProfile = async (req, res) => {
 export const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    const user = await User.findByEmail(req.user.email);
 
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required',
+      });
+    }
+
+    const user = await UserPrisma.findByEmail(req.user.email);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -346,8 +362,8 @@ export const changePassword = async (req, res) => {
     }
 
     // Verify current password
-    const isCurrentPasswordValid = await User.comparePassword(currentPassword, user.password);
-    if (!isCurrentPasswordValid) {
+    const isValidPassword = await UserPrisma.comparePassword(currentPassword, user.password);
+    if (!isValidPassword) {
       return res.status(400).json({
         success: false,
         message: 'Current password is incorrect',
@@ -355,18 +371,23 @@ export const changePassword = async (req, res) => {
     }
 
     // Hash new password
-    const hashedNewPassword = await User.hashPassword(newPassword);
-    await user.update({ password: hashedNewPassword });
+    const hashedNewPassword = await UserPrisma.hashPassword(newPassword);
 
-    res.json({
+    // Update password
+    await user.update({
+      password: hashedNewPassword,
+    });
+
+    res.status(200).json({
       success: true,
       message: 'Password changed successfully',
     });
   } catch (error) {
     console.error('Change password error:', error);
+
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: 'Failed to change password',
     });
   }
 };

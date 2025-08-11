@@ -296,7 +296,8 @@ const FacilityApproval = () => {
       ) {
         toast({
           title: "Invalid rejection reason",
-          description: "Rejection reason must be between 10 and 500 characters long.",
+          description:
+            "Rejection reason must be between 10 and 500 characters long.",
           variant: "destructive",
         });
       } else {
@@ -695,7 +696,7 @@ const FacilityApproval = () => {
                                     rows={4}
                                   />
                                   <div className="mt-1 text-xs text-gray-500">
-                                    {rejectReason.length}/500 characters 
+                                    {rejectReason.length}/500 characters
                                     {rejectReason.length < 10 && (
                                       <span className="text-red-500 ml-2">
                                         (minimum 10 characters required)

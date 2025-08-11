@@ -4,7 +4,7 @@ import {
   createPaymentIntent,
   confirmPayment,
   getPaymentHistory,
-  processRefund,
+  requestRefund,
 } from '../controllers/paymentController.js';
 import { authMiddleware } from '../middleware/auth.js';
 
@@ -48,7 +48,7 @@ router.post(
     body('reason').optional().isString().trim().isLength({ max: 500 }),
     body('amount').optional().isFloat({ min: 0 }),
   ],
-  processRefund
+  requestRefund
 );
 
 export default router;

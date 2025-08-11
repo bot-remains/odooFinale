@@ -1,155 +1,382 @@
-import { query } from '../config/database.js';
+import prisma from '../config/prisma.js';
 
 class Review {
   constructor(reviewData) {
     this.id = reviewData.id;
-    this.userId = reviewData.user_id;
-    this.venueId = reviewData.venue_id;
-    this.bookingId = reviewData.booking_id;
+    this.userId = reviewData.userId;
+    this.venueId = reviewData.venueId;
+    this.bookingId = reviewData.bookingId;
     this.rating = reviewData.rating;
     this.comment = reviewData.comment;
-    this.createdAt = reviewData.created_at;
-    this.updatedAt = reviewData.updated_at;
-  }
+    this.helpfulCount = reviewData.helpfulCount;
+    this.createdAt = reviewData.createdAt;
+    this.updatedAt = reviewData.updatedAt;
 
-  // Create reviews table
-  static async createTable() {
-    const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS reviews (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        venue_id INTEGER REFERENCES venues(id) ON DELETE CASCADE,
-        booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE,
-        rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
-        comment TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      -- Create indexes
-      CREATE INDEX IF NOT EXISTS idx_reviews_user_id ON reviews(user_id);
-      CREATE INDEX IF NOT EXISTS idx_reviews_venue_id ON reviews(venue_id);
-      CREATE INDEX IF NOT EXISTS idx_reviews_booking_id ON reviews(booking_id);
-      CREATE INDEX IF NOT EXISTS idx_reviews_rating ON reviews(rating);
-
-      -- Ensure one review per booking
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_review_booking ON reviews(booking_id);
-
-      -- Create trigger to update updated_at
-      CREATE OR REPLACE FUNCTION update_reviews_updated_at()
-      RETURNS TRIGGER AS $$
-      BEGIN
-          NEW.updated_at = CURRENT_TIMESTAMP;
-          RETURN NEW;
-      END;
-      $$ language 'plpgsql';
-
-      DROP TRIGGER IF EXISTS update_reviews_updated_at ON reviews;
-      CREATE TRIGGER update_reviews_updated_at
-          BEFORE UPDATE ON reviews
-          FOR EACH ROW
-          EXECUTE FUNCTION update_reviews_updated_at();
-    `;
-
-    try {
-      await query(createTableQuery);
-      console.log('✅ Reviews table created/verified successfully');
-    } catch (error) {
-      console.error('❌ Error creating reviews table:', error.message);
-      throw error;
-    }
+    // Related data
+    this.userName = reviewData.user?.name;
+    this.userAvatar = reviewData.user?.avatar;
+    this.venueName = reviewData.venue?.name;
+    this.isHelpful = reviewData.isHelpful; // Set by queries when checking if current user found it helpful
   }
 
   // Create a new review
   static async create(reviewData) {
     const { userId, venueId, bookingId, rating, comment } = reviewData;
 
-    const insertQuery = `
-      INSERT INTO reviews (user_id, venue_id, booking_id, rating, comment)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-    `;
-
     try {
-      const result = await query(insertQuery, [userId, venueId, bookingId, rating, comment]);
-      return new Review(result.rows[0]);
+      const review = await prisma.review.create({
+        data: {
+          userId,
+          venueId,
+          bookingId: bookingId || null,
+          rating,
+          comment,
+        },
+        include: {
+          user: {
+            select: {
+              name: true,
+              avatar: true,
+            },
+          },
+          venue: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      });
+
+      // Update venue rating and mark booking as reviewed if applicable
+      await Promise.all([
+        this.updateVenueRating(venueId),
+        bookingId
+          ? prisma.booking.update({
+              where: { id: bookingId },
+              data: { reviewed: true },
+            })
+          : null,
+      ]);
+
+      return new Review(review);
     } catch (error) {
-      if (error.code === '23505') {
-        // Unique violation
-        throw new Error('Review already exists for this booking');
+      if (error.code === 'P2002') {
+        throw new Error('You have already reviewed this booking');
       }
       throw error;
     }
   }
 
   // Find review by ID
-  static async findById(id) {
-    const selectQuery = `
-      SELECT r.*,
-             u.name as user_name,
-             v.name as venue_name
-      FROM reviews r
-      LEFT JOIN users u ON r.user_id = u.id
-      LEFT JOIN venues v ON r.venue_id = v.id
-      WHERE r.id = $1
-    `;
+  static async findById(id, currentUserId = null) {
+    const include = {
+      user: {
+        select: {
+          name: true,
+          avatar: true,
+        },
+      },
+      venue: {
+        select: {
+          name: true,
+        },
+      },
+    };
 
-    const result = await query(selectQuery, [id]);
-    return result.rows.length > 0 ? new Review(result.rows[0]) : null;
+    // Add helpful check if current user is provided
+    if (currentUserId) {
+      include.helpfulVotes = {
+        where: { userId: currentUserId },
+        select: { id: true },
+      };
+    }
+
+    const review = await prisma.review.findUnique({
+      where: { id: parseInt(id) },
+      include,
+    });
+
+    if (!review) return null;
+
+    const reviewData = {
+      ...review,
+      isHelpful: currentUserId ? review.helpfulVotes.length > 0 : false,
+    };
+
+    return new Review(reviewData);
   }
 
   // Get reviews by venue
-  static async findByVenue(venueId, limit = 20, offset = 0) {
-    const selectQuery = `
-      SELECT r.*,
-             u.name as user_name
-      FROM reviews r
-      LEFT JOIN users u ON r.user_id = u.id
-      WHERE r.venue_id = $1
-      ORDER BY r.created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
+  static async findByVenue(venueId, limit = 20, offset = 0, currentUserId = null) {
+    const include = {
+      user: {
+        select: {
+          name: true,
+          avatar: true,
+        },
+      },
+    };
 
-    const result = await query(selectQuery, [venueId, limit, offset]);
-    return result.rows.map((row) => new Review(row));
+    // Add helpful check if current user is provided
+    if (currentUserId) {
+      include.helpfulVotes = {
+        where: { userId: currentUserId },
+        select: { id: true },
+      };
+    }
+
+    const reviews = await prisma.review.findMany({
+      where: { venueId: parseInt(venueId) },
+      include,
+      orderBy: [{ helpfulCount: 'desc' }, { createdAt: 'desc' }],
+      take: limit,
+      skip: offset,
+    });
+
+    return reviews.map((review) => {
+      const reviewData = {
+        ...review,
+        isHelpful: currentUserId ? review.helpfulVotes?.length > 0 : false,
+      };
+      return new Review(reviewData);
+    });
   }
 
   // Get reviews by user
   static async findByUser(userId, limit = 20, offset = 0) {
-    const selectQuery = `
-      SELECT r.*,
-             v.name as venue_name
-      FROM reviews r
-      LEFT JOIN venues v ON r.venue_id = v.id
-      WHERE r.user_id = $1
-      ORDER BY r.created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
+    const reviews = await prisma.review.findMany({
+      where: { userId: parseInt(userId) },
+      include: {
+        venue: {
+          select: {
+            name: true,
+            photos: true,
+          },
+        },
+        booking: {
+          select: {
+            bookingDate: true,
+            court: {
+              select: {
+                name: true,
+                sportType: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+      skip: offset,
+    });
 
-    const result = await query(selectQuery, [userId, limit, offset]);
-    return result.rows.map((row) => new Review(row));
+    return reviews.map((review) => new Review(review));
+  }
+
+  // Get recent reviews across all venues
+  static async findRecent(limit = 10) {
+    const reviews = await prisma.review.findMany({
+      include: {
+        user: {
+          select: {
+            name: true,
+            avatar: true,
+          },
+        },
+        venue: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+    });
+
+    return reviews.map((review) => new Review(review));
   }
 
   // Update review
   async update(updateData) {
-    const { rating, comment } = updateData;
+    const allowedFields = ['rating', 'comment'];
+    const prismaUpdateData = {};
 
-    const updateQuery = `
-      UPDATE reviews
-      SET rating = $1, comment = $2
-      WHERE id = $3
-      RETURNING *
-    `;
+    Object.keys(updateData).forEach((key) => {
+      if (allowedFields.includes(key) && updateData[key] !== undefined) {
+        prismaUpdateData[key] = updateData[key];
+      }
+    });
 
-    const result = await query(updateQuery, [rating, comment, this.id]);
-    return new Review(result.rows[0]);
+    if (Object.keys(prismaUpdateData).length === 0) {
+      throw new Error('No valid fields to update');
+    }
+
+    const updatedReview = await prisma.review.update({
+      where: { id: this.id },
+      data: prismaUpdateData,
+      include: {
+        user: {
+          select: {
+            name: true,
+            avatar: true,
+          },
+        },
+        venue: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    // Update venue rating if rating changed
+    if (updateData.rating !== undefined) {
+      await this.constructor.updateVenueRating(this.venueId);
+    }
+
+    return new Review(updatedReview);
   }
 
   // Delete review
   async delete() {
-    const deleteQuery = `DELETE FROM reviews WHERE id = $1 RETURNING id`;
-    const result = await query(deleteQuery, [this.id]);
-    return result.rows.length > 0;
+    await prisma.review.delete({
+      where: { id: this.id },
+    });
+
+    // Update venue rating after deletion
+    await this.constructor.updateVenueRating(this.venueId);
+
+    return true;
+  }
+
+  // Mark review as helpful
+  async markHelpful(userId) {
+    try {
+      await prisma.reviewHelpful.create({
+        data: {
+          reviewId: this.id,
+          userId,
+        },
+      });
+
+      // Update helpful count
+      await prisma.review.update({
+        where: { id: this.id },
+        data: {
+          helpfulCount: {
+            increment: 1,
+          },
+        },
+      });
+
+      return true;
+    } catch (error) {
+      if (error.code === 'P2002') {
+        throw new Error('You have already marked this review as helpful');
+      }
+      throw error;
+    }
+  }
+
+  // Remove helpful mark
+  async removeHelpful(userId) {
+    const deleted = await prisma.reviewHelpful.deleteMany({
+      where: {
+        reviewId: this.id,
+        userId,
+      },
+    });
+
+    if (deleted.count > 0) {
+      // Update helpful count
+      await prisma.review.update({
+        where: { id: this.id },
+        data: {
+          helpfulCount: {
+            decrement: 1,
+          },
+        },
+      });
+    }
+
+    return deleted.count > 0;
+  }
+
+  // Static method to update venue rating
+  static async updateVenueRating(venueId) {
+    const stats = await prisma.review.aggregate({
+      where: { venueId: parseInt(venueId) },
+      _avg: { rating: true },
+      _count: { id: true },
+    });
+
+    await prisma.venue.update({
+      where: { id: parseInt(venueId) },
+      data: {
+        rating: stats._avg.rating || 0,
+        totalReviews: stats._count.id || 0,
+      },
+    });
+  }
+
+  // Get review statistics for venue
+  static async getVenueStats(venueId) {
+    const [ratingStats, totalCount] = await Promise.all([
+      prisma.review.groupBy({
+        by: ['rating'],
+        where: { venueId: parseInt(venueId) },
+        _count: {
+          id: true,
+        },
+      }),
+      prisma.review.count({
+        where: { venueId: parseInt(venueId) },
+      }),
+    ]);
+
+    const stats = {
+      totalReviews: totalCount,
+      averageRating: 0,
+      ratingDistribution: {
+        5: 0,
+        4: 0,
+        3: 0,
+        2: 0,
+        1: 0,
+      },
+    };
+
+    let totalRating = 0;
+
+    ratingStats.forEach((stat) => {
+      stats.ratingDistribution[stat.rating] = stat._count.id;
+      totalRating += stat.rating * stat._count.id;
+    });
+
+    if (totalCount > 0) {
+      stats.averageRating = totalRating / totalCount;
+    }
+
+    return stats;
+  }
+
+  // Check if user can review venue
+  static async canUserReview(userId, venueId) {
+    // Check if user has a completed booking for this venue without a review
+    const eligibleBooking = await prisma.booking.findFirst({
+      where: {
+        userId: parseInt(userId),
+        venueId: parseInt(venueId),
+        status: 'completed',
+        reviewed: false,
+      },
+    });
+
+    return !!eligibleBooking;
   }
 
   // Convert to JSON
@@ -161,8 +388,13 @@ class Review {
       bookingId: this.bookingId,
       rating: this.rating,
       comment: this.comment,
+      helpfulCount: this.helpfulCount,
+      isHelpful: this.isHelpful,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
+      userName: this.userName,
+      userAvatar: this.userAvatar,
+      venueName: this.venueName,
     };
   }
 }

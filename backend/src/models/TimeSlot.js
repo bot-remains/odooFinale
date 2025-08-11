@@ -1,140 +1,365 @@
-import { query } from '../config/database.js';
+import prisma from '../config/prisma.js';
 
 class TimeSlot {
   constructor(timeSlotData) {
     this.id = timeSlotData.id;
-    this.courtId = timeSlotData.court_id;
-    this.date = timeSlotData.date;
-    this.startTime = timeSlotData.start_time;
-    this.endTime = timeSlotData.end_time;
-    this.isBlocked = timeSlotData.is_blocked;
-    this.blockReason = timeSlotData.block_reason;
-    this.price = timeSlotData.price;
-    this.createdAt = timeSlotData.created_at;
-    this.updatedAt = timeSlotData.updated_at;
+    this.venueId = timeSlotData.venueId;
+    this.courtId = timeSlotData.courtId;
+    this.dayOfWeek = timeSlotData.dayOfWeek; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    this.startTime = timeSlotData.startTime;
+    this.endTime = timeSlotData.endTime;
+    this.isAvailable = timeSlotData.isAvailable;
+    this.createdAt = timeSlotData.createdAt;
+
+    // Related data
+    this.venueName = timeSlotData.venue?.name;
+    this.courtName = timeSlotData.court?.name;
+    this.sportType = timeSlotData.court?.sportType;
+    this.pricePerHour = timeSlotData.court?.pricePerHour;
   }
 
-  // Create time_slots table for managing availability and maintenance blocks
-  static async createTable() {
-    const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS time_slots (
-        id SERIAL PRIMARY KEY,
-        court_id INTEGER REFERENCES courts(id) ON DELETE CASCADE,
-        date DATE NOT NULL,
-        start_time TIME NOT NULL,
-        end_time TIME NOT NULL,
-        is_blocked BOOLEAN DEFAULT false,
-        block_reason VARCHAR(255),
-        price DECIMAL(10,2), -- Override default court price if needed
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+  // Create a new time slot
+  static async create(timeSlotData) {
+    const { venueId, courtId, dayOfWeek, startTime, endTime, isAvailable = true } = timeSlotData;
 
-      -- Create indexes
-      CREATE INDEX IF NOT EXISTS idx_time_slots_court_id ON time_slots(court_id);
-      CREATE INDEX IF NOT EXISTS idx_time_slots_date ON time_slots(date);
-      CREATE INDEX IF NOT EXISTS idx_time_slots_blocked ON time_slots(is_blocked);
+    // Convert time strings to Date objects for storage
+    const start = new Date(`1970-01-01T${startTime}`);
+    const end = new Date(`1970-01-01T${endTime}`);
 
-      -- Ensure no overlapping time slots for same court on same date
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_time_slot
-      ON time_slots(court_id, date, start_time, end_time);
+    const timeSlot = await prisma.timeSlot.create({
+      data: {
+        venueId,
+        courtId,
+        dayOfWeek,
+        startTime: start,
+        endTime: end,
+        isAvailable,
+      },
+      include: {
+        venue: {
+          select: {
+            name: true,
+          },
+        },
+        court: {
+          select: {
+            name: true,
+            sportType: true,
+            pricePerHour: true,
+          },
+        },
+      },
+    });
 
-      -- Create trigger to update updated_at
-      CREATE OR REPLACE FUNCTION update_time_slots_updated_at()
-      RETURNS TRIGGER AS $$
-      BEGIN
-          NEW.updated_at = CURRENT_TIMESTAMP;
-          RETURN NEW;
-      END;
-      $$ language 'plpgsql';
+    return new TimeSlot(timeSlot);
+  }
 
-      DROP TRIGGER IF EXISTS update_time_slots_updated_at ON time_slots;
-      CREATE TRIGGER update_time_slots_updated_at
-          BEFORE UPDATE ON time_slots
-          FOR EACH ROW
-          EXECUTE FUNCTION update_time_slots_updated_at();
-    `;
+  // Create multiple time slots for a court
+  static async createMultiple(timeSlots) {
+    const data = timeSlots.map((slot) => ({
+      venueId: slot.venueId,
+      courtId: slot.courtId,
+      dayOfWeek: slot.dayOfWeek,
+      startTime: new Date(`1970-01-01T${slot.startTime}`),
+      endTime: new Date(`1970-01-01T${slot.endTime}`),
+      isAvailable: slot.isAvailable !== undefined ? slot.isAvailable : true,
+    }));
 
-    try {
-      await query(createTableQuery);
-      console.log('✅ TimeSlots table created/verified successfully');
-    } catch (error) {
-      console.error('❌ Error creating time_slots table:', error.message);
-      throw error;
+    const createdSlots = await prisma.timeSlot.createMany({
+      data,
+      skipDuplicates: true,
+    });
+
+    return createdSlots;
+  }
+
+  // Find time slot by ID
+  static async findById(id) {
+    const timeSlot = await prisma.timeSlot.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        venue: {
+          select: {
+            name: true,
+          },
+        },
+        court: {
+          select: {
+            name: true,
+            sportType: true,
+            pricePerHour: true,
+          },
+        },
+      },
+    });
+
+    return timeSlot ? new TimeSlot(timeSlot) : null;
+  }
+
+  // Get time slots by venue
+  static async findByVenue(venueId, dayOfWeek = null, courtId = null) {
+    const where = {
+      venueId: parseInt(venueId),
+      isAvailable: true,
+    };
+
+    if (dayOfWeek !== null) {
+      where.dayOfWeek = dayOfWeek;
     }
+
+    if (courtId) {
+      where.courtId = parseInt(courtId);
+    }
+
+    const timeSlots = await prisma.timeSlot.findMany({
+      where,
+      include: {
+        court: {
+          select: {
+            name: true,
+            sportType: true,
+            pricePerHour: true,
+          },
+        },
+      },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+
+    return timeSlots.map((slot) => new TimeSlot(slot));
   }
 
-  // Block a time slot for maintenance
-  static async blockSlot(courtId, date, startTime, endTime, reason) {
-    const insertQuery = `
-      INSERT INTO time_slots (court_id, date, start_time, end_time, is_blocked, block_reason)
-      VALUES ($1, $2, $3, $4, true, $5)
-      ON CONFLICT (court_id, date, start_time, end_time)
-      DO UPDATE SET is_blocked = true, block_reason = $5
-      RETURNING *
-    `;
+  // Get time slots by court
+  static async findByCourt(courtId, dayOfWeek = null) {
+    const where = {
+      courtId: parseInt(courtId),
+      isAvailable: true,
+    };
 
-    const result = await query(insertQuery, [courtId, date, startTime, endTime, reason]);
-    return new TimeSlot(result.rows[0]);
+    if (dayOfWeek !== null) {
+      where.dayOfWeek = dayOfWeek;
+    }
+
+    const timeSlots = await prisma.timeSlot.findMany({
+      where,
+      include: {
+        venue: {
+          select: {
+            name: true,
+          },
+        },
+        court: {
+          select: {
+            name: true,
+            sportType: true,
+            pricePerHour: true,
+          },
+        },
+      },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+
+    return timeSlots.map((slot) => new TimeSlot(slot));
   }
 
-  // Unblock a time slot
-  static async unblockSlot(courtId, date, startTime, endTime) {
-    const updateQuery = `
-      UPDATE time_slots
-      SET is_blocked = false, block_reason = NULL
-      WHERE court_id = $1 AND date = $2 AND start_time = $3 AND end_time = $4
-      RETURNING *
-    `;
+  // Get available time slots for a specific date
+  static async getAvailableSlots(courtId, date) {
+    const targetDate = new Date(date);
+    const dayOfWeek = targetDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
 
-    const result = await query(updateQuery, [courtId, date, startTime, endTime]);
-    return result.rows.length > 0 ? new TimeSlot(result.rows[0]) : null;
+    // Get all time slots for this court and day
+    const timeSlots = await prisma.timeSlot.findMany({
+      where: {
+        courtId: parseInt(courtId),
+        dayOfWeek,
+        isAvailable: true,
+      },
+      include: {
+        court: {
+          select: {
+            name: true,
+            sportType: true,
+            pricePerHour: true,
+          },
+        },
+      },
+      orderBy: {
+        startTime: 'asc',
+      },
+    });
+
+    // Get existing bookings for this date
+    const existingBookings = await prisma.booking.findMany({
+      where: {
+        courtId: parseInt(courtId),
+        bookingDate: targetDate,
+        status: {
+          not: 'cancelled',
+        },
+      },
+      select: {
+        startTime: true,
+        endTime: true,
+      },
+    });
+
+    // Filter out time slots that conflict with existing bookings
+    const availableSlots = timeSlots.filter((slot) => {
+      return !existingBookings.some((booking) => {
+        const slotStart = new Date(slot.startTime);
+        const slotEnd = new Date(slot.endTime);
+        const bookingStart = new Date(booking.startTime);
+        const bookingEnd = new Date(booking.endTime);
+
+        // Check for time overlap
+        return (
+          (slotStart < bookingEnd && slotEnd > bookingStart) ||
+          (bookingStart < slotEnd && bookingEnd > slotStart)
+        );
+      });
+    });
+
+    return availableSlots.map((slot) => new TimeSlot(slot));
   }
 
-  // Get blocked slots for a court on a specific date
-  static async getBlockedSlots(courtId, date) {
-    const selectQuery = `
-      SELECT * FROM time_slots
-      WHERE court_id = $1 AND date = $2 AND is_blocked = true
-      ORDER BY start_time
-    `;
+  // Update time slot
+  async update(updateData) {
+    const allowedFields = ['dayOfWeek', 'startTime', 'endTime', 'isAvailable'];
+    const prismaUpdateData = {};
 
-    const result = await query(selectQuery, [courtId, date]);
-    return result.rows.map((row) => new TimeSlot(row));
+    Object.keys(updateData).forEach((key) => {
+      if (allowedFields.includes(key) && updateData[key] !== undefined) {
+        if (key === 'startTime' || key === 'endTime') {
+          // Convert time string to Date object
+          prismaUpdateData[key] = new Date(`1970-01-01T${updateData[key]}`);
+        } else {
+          prismaUpdateData[key] = updateData[key];
+        }
+      }
+    });
+
+    if (Object.keys(prismaUpdateData).length === 0) {
+      throw new Error('No valid fields to update');
+    }
+
+    const updatedTimeSlot = await prisma.timeSlot.update({
+      where: { id: this.id },
+      data: prismaUpdateData,
+      include: {
+        venue: {
+          select: {
+            name: true,
+          },
+        },
+        court: {
+          select: {
+            name: true,
+            sportType: true,
+            pricePerHour: true,
+          },
+        },
+      },
+    });
+
+    return new TimeSlot(updatedTimeSlot);
   }
 
-  // Check if a time slot is blocked
-  static async isSlotBlocked(courtId, date, startTime, endTime) {
-    const checkQuery = `
-      SELECT COUNT(*) as blocked_count
-      FROM time_slots
-      WHERE court_id = $1
-        AND date = $2
-        AND is_blocked = true
-        AND (
-          (start_time <= $3 AND end_time > $3) OR
-          (start_time < $4 AND end_time >= $4) OR
-          (start_time >= $3 AND end_time <= $4)
-        )
-    `;
+  // Delete time slot
+  async delete() {
+    await prisma.timeSlot.delete({
+      where: { id: this.id },
+    });
 
-    const result = await query(checkQuery, [courtId, date, startTime, endTime]);
-    return parseInt(result.rows[0].blocked_count) > 0;
+    return true;
+  }
+
+  // Bulk delete time slots
+  static async deleteByCourt(courtId) {
+    const result = await prisma.timeSlot.deleteMany({
+      where: { courtId: parseInt(courtId) },
+    });
+
+    return result.count;
+  }
+
+  // Bulk delete time slots by venue
+  static async deleteByVenue(venueId) {
+    const result = await prisma.timeSlot.deleteMany({
+      where: { venueId: parseInt(venueId) },
+    });
+
+    return result.count;
+  }
+
+  // Toggle availability
+  async toggleAvailability() {
+    const updatedTimeSlot = await prisma.timeSlot.update({
+      where: { id: this.id },
+      data: { isAvailable: !this.isAvailable },
+    });
+
+    return new TimeSlot(updatedTimeSlot);
+  }
+
+  // Get day name from day of week number
+  getDayName() {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return days[this.dayOfWeek];
+  }
+
+  // Format time for display
+  getFormattedStartTime() {
+    return this.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  getFormattedEndTime() {
+    return this.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // Calculate duration in hours
+  getDurationInHours() {
+    const start = new Date(this.startTime);
+    const end = new Date(this.endTime);
+    const diffMs = end - start;
+    return diffMs / (1000 * 60 * 60); // Convert milliseconds to hours
+  }
+
+  // Calculate price for this time slot
+  getPrice() {
+    if (!this.pricePerHour) return 0;
+    return parseFloat(this.pricePerHour) * this.getDurationInHours();
+  }
+
+  // Check if time slot is in the past for a given date
+  isPast(date) {
+    const now = new Date();
+    const slotDateTime = new Date(date);
+    const slotTime = new Date(this.startTime);
+
+    slotDateTime.setHours(slotTime.getHours(), slotTime.getMinutes(), 0, 0);
+
+    return slotDateTime < now;
   }
 
   // Convert to JSON
   toJSON() {
     return {
       id: this.id,
+      venueId: this.venueId,
       courtId: this.courtId,
-      date: this.date,
+      dayOfWeek: this.dayOfWeek,
+      dayName: this.getDayName(),
       startTime: this.startTime,
       endTime: this.endTime,
-      isBlocked: this.isBlocked,
-      blockReason: this.blockReason,
-      price: this.price ? parseFloat(this.price) : null,
+      formattedStartTime: this.getFormattedStartTime(),
+      formattedEndTime: this.getFormattedEndTime(),
+      duration: this.getDurationInHours(),
+      price: this.getPrice(),
+      isAvailable: this.isAvailable,
       createdAt: this.createdAt,
-      updatedAt: this.updatedAt,
+      venueName: this.venueName,
+      courtName: this.courtName,
+      sportType: this.sportType,
+      pricePerHour: this.pricePerHour ? parseFloat(this.pricePerHour) : null,
     };
   }
 }
