@@ -4,447 +4,748 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye, CheckCircle, X, Clock, MapPin, Star, Camera, Wifi, Car, CreditCard } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Eye,
+  CheckCircle,
+  X,
+  Clock,
+  MapPin,
+  Star,
+  Camera,
+  Wifi,
+  Car,
+  CreditCard,
+} from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-
-// Mock pending facility data
-const mockPendingFacilities = [
-  {
-    id: 1,
-    name: "Elite Sports Hub",
-    owner: {
-      name: "Rajesh Kumar",
-      email: "rajesh.kumar@email.com",
-      avatar: "RK",
-      phone: "+91 98765 43210"
-    },
-    location: {
-      address: "123 Sports Complex Road, Sector 21",
-      city: "Gurgaon",
-      state: "Haryana",
-      pincode: "122001"
-    },
-    facilities: {
-      courts: [
-        { type: "Badminton", count: 4, price: 299 },
-        { type: "Tennis", count: 2, price: 599 }
-      ],
-      amenities: ["AC", "Parking", "WiFi", "Changing Rooms", "Equipment Rental"],
-      type: "Indoor"
-    },  
-    documents: [
-      { name: "Business License", status: "uploaded" },
-      { name: "Property Papers", status: "uploaded" },
-      { name: "Insurance Certificate", status: "uploaded" }
-    ],
-    images: [
-      "court1.jpg", "court2.jpg", "facility_exterior.jpg", "amenities.jpg"
-    ],
-    submittedDate: "2024-08-08",
-    status: "pending"
-  },
-  {
-    id: 2,
-    name: "City Turf Grounds",
-    owner: {
-      name: "Priya Sharma",
-      email: "priya.sharma@email.com",
-      avatar: "PS",
-      phone: "+91 87654 32109"
-    },
-    location: {
-      address: "456 Green Field Avenue",
-      city: "Mumbai",
-      state: "Maharashtra",
-      pincode: "400001"
-    },
-    facilities: {
-      courts: [
-        { type: "Football", count: 2, price: 1299 },
-        { type: "Cricket", count: 1, price: 1899 }
-      ],
-      amenities: ["Floodlights", "Parking", "Refreshments", "Changing Rooms"],
-      type: "Outdoor"
-    },
-    documents: [
-      { name: "Business License", status: "uploaded" },
-      { name: "Property Papers", status: "pending" },
-      { name: "Insurance Certificate", status: "uploaded" }
-    ],
-    images: [
-      "turf1.jpg", "turf2.jpg", "parking.jpg"
-    ],
-    submittedDate: "2024-08-09",
-    status: "pending"
-  },
-  {
-    id: 3,
-    name: "Champions Hockey Arena",
-    owner: {
-      name: "Amit Singh",
-      email: "amit.singh@email.com",
-      avatar: "AS",
-      phone: "+91 76543 21098"
-    },
-    location: {
-      address: "789 Sports City, Block C",
-      city: "Chandigarh",
-      state: "Chandigarh",
-      pincode: "160001"
-    },
-    facilities: {
-      courts: [
-        { type: "Hockey", count: 1, price: 999 }
-      ],
-      amenities: ["Astro Turf", "Professional Equipment", "Coaching", "Parking"],
-      type: "Outdoor"
-    },
-    documents: [
-      { name: "Business License", status: "uploaded" },
-      { name: "Property Papers", status: "uploaded" },
-      { name: "Insurance Certificate", status: "uploaded" },
-      { name: "Sports Authority Clearance", status: "uploaded" }
-    ],
-    images: [
-      "hockey_field.jpg", "equipment.jpg", "coaching_area.jpg"
-    ],
-    submittedDate: "2024-08-07",
-    status: "under_review"
-  }
-];
+import { useAdminVenues, useReviewVenue } from "@/services/adminService";
+import {
+  useLogin,
+  isAuthenticated,
+  getCurrentUserFromStorage,
+} from "@/services/authService";
+import { Venue } from "@/lib/types";
+import { Input } from "@/components/ui/input";
 
 const FacilityApproval = () => {
-  const [facilities, setFacilities] = useState(mockPendingFacilities);
-  const [selectedFacility, setSelectedFacility] = useState(null);
+  const [selectedFacility, setSelectedFacility] = useState<Venue | null>(null);
   const [rejectReason, setRejectReason] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<
+    "pending" | "approved" | "all"
+  >("pending");
+
+  // Login state
+  const [showLogin, setShowLogin] = useState(!isAuthenticated());
+  const [email, setEmail] = useState("admin@quickcourt.com");
+  const [password, setPassword] = useState("admin123");
+
   const { toast } = useToast();
+  const loginMutation = useLogin();
 
-  const filteredFacilities = facilities.filter(facility => 
-    filterStatus === "all" || facility.status === filterStatus
-  );
+  // API hooks
+  const {
+    data: venuesData,
+    isLoading,
+    error,
+    refetch,
+  } = useAdminVenues({
+    status: filterStatus,
+    limit: 50,
+    offset: 0,
+  });
 
-  const handleApprove = (facilityId) => {
-    setFacilities(prev => prev.filter(f => f.id !== facilityId));
-    toast({
-      title: "Facility approved! ✅",
-      description: "The facility has been approved and is now live on the platform.",
-    });
-  };
+  const reviewVenueMutation = useReviewVenue();
 
-  const handleReject = (facilityId, reason) => {
-    setFacilities(prev => prev.filter(f => f.id !== facilityId));
-    toast({
-      title: "Facility rejected",
-      description: "The facility owner has been notified with the rejection reason.",
-      variant: "destructive",
-    });
-  };
+  const venues = venuesData?.items || [];
+  const totalCount = venuesData?.pagination?.total || 0;
 
-  const getStatusBadgeVariant = (status) => {
-    switch (status) {
-      case "pending": return "secondary";
-      case "under_review": return "default";
-      case "approved": return "default";
-      case "rejected": return "destructive";
-      default: return "outline";
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      console.log("Attempting login with:", { email, password: "***" });
+      const result = await loginMutation.mutateAsync({ email, password });
+      console.log("Login successful:", result);
+      setShowLogin(false);
+      toast({
+        title: "Login successful! ✅",
+        description: "You are now authenticated as an admin.",
+      });
+      // Force refetch of venues after login
+      refetch();
+    } catch (error) {
+      console.error("Login error:", error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Invalid credentials. Please try again.";
+      toast({
+        title: "Login failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
     }
   };
 
-  const getAmenityIcon = (amenity) => {
+  // Check authentication status
+  const user = getCurrentUserFromStorage();
+  const isAdmin = user?.role === "admin";
+
+  if (showLogin || !isAuthenticated() || !isAdmin) {
+    return (
+      <div className="container py-10">
+        <SEO
+          title="Admin Login – QuickCourt"
+          description="Admin authentication required."
+        />
+        <div className="max-w-md mx-auto">
+          <Card className="p-6">
+            <CardHeader>
+              <CardTitle className="text-center">
+                Admin Login Required
+              </CardTitle>
+              <p className="text-center text-gray-600">
+                Please login with admin credentials to access facility approval.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Email
+                  </label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="admin@quickcourt.com"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Password
+                  </label>
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter admin password"
+                    required
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={loginMutation.isPending}
+                >
+                  {loginMutation.isPending ? "Logging in..." : "Login as Admin"}
+                </Button>
+              </form>
+              {!isAdmin && user && (
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                  <p className="text-sm text-yellow-800">
+                    Current user ({user.email}) does not have admin privileges.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  const handleApprove = async (venueId: number) => {
+    if (!isAuthenticated()) {
+      toast({
+        title: "Authentication required",
+        description: "Please login to perform this action.",
+        variant: "destructive",
+      });
+      setShowLogin(true);
+      return;
+    }
+
+    try {
+      await reviewVenueMutation.mutateAsync({
+        venueId,
+        data: { action: "approve" },
+      });
+      toast({
+        title: "Facility approved! ✅",
+        description:
+          "The facility has been approved and is now live on the platform.",
+      });
+      refetch();
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to approve the facility. Please try again.";
+
+      if (
+        errorMessage.includes("token") ||
+        errorMessage.includes("unauthorized")
+      ) {
+        toast({
+          title: "Authentication expired",
+          description: "Please login again to continue.",
+          variant: "destructive",
+        });
+        setShowLogin(true);
+      } else {
+        toast({
+          title: "Error approving facility",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleReject = async (venueId: number, reason: string) => {
+    const token = localStorage.getItem("token");
+    console.log(
+      "Rejection attempt - Token exists:",
+      !!token,
+      "VenueId:",
+      venueId,
+      "Reason:",
+      reason
+    );
+
+    if (!isAuthenticated()) {
+      toast({
+        title: "Authentication required",
+        description: "Please login to perform this action.",
+        variant: "destructive",
+      });
+      setShowLogin(true);
+      return;
+    }
+
+    try {
+      console.log("Sending rejection request...");
+      const result = await reviewVenueMutation.mutateAsync({
+        venueId,
+        data: {
+          action: "reject",
+          rejectionReason: reason,
+        },
+      });
+      console.log("Rejection successful:", result);
+      toast({
+        title: "Facility rejected",
+        description:
+          "The facility owner has been notified with the rejection reason.",
+        variant: "destructive",
+      });
+      setRejectReason("");
+      setIsRejectDialogOpen(false); // Close the dialog
+      refetch();
+    } catch (error) {
+      console.error("Rejection error:", error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to reject the facility. Please try again.";
+
+      if (
+        errorMessage.includes("token") ||
+        errorMessage.includes("unauthorized")
+      ) {
+        toast({
+          title: "Authentication expired",
+          description: "Please login again to continue.",
+          variant: "destructive",
+        });
+        setShowLogin(true);
+      } else if (
+        errorMessage.includes("rejectionReason") ||
+        errorMessage.includes("Invalid value") ||
+        errorMessage.includes("length")
+      ) {
+        toast({
+          title: "Invalid rejection reason",
+          description: "Rejection reason must be between 10 and 500 characters long.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error rejecting facility",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleFilterChange = (value: string) => {
+    setFilterStatus(value as "pending" | "approved" | "all");
+  };
+
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case "pending":
+        return "secondary";
+      case "approved":
+        return "default";
+      case "rejected":
+        return "destructive";
+      default:
+        return "outline";
+    }
+  };
+
+  const getAmenityIcon = (amenity: string) => {
     switch (amenity.toLowerCase()) {
-      case "wifi": return <Wifi className="w-4 h-4" />;
-      case "parking": return <Car className="w-4 h-4" />;
-      case "ac": return "❄️";
-      default: return "✓";
+      case "wifi":
+        return <Wifi className="w-4 h-4" />;
+      case "parking":
+        return <Car className="w-4 h-4" />;
+      case "ac":
+        return "❄️";
+      default:
+        return "✓";
     }
   };
 
   return (
     <div className="container py-10">
-      <SEO title="Facility Approval – QuickCourt" description="Approve or reject facility registrations with comments." />
+      <SEO
+        title="Facility Approval – QuickCourt"
+        description="Approve or reject facility registrations with comments."
+      />
       <PageHeader title="Facility Approval" />
-      
+
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Pending Approvals ({filteredFacilities.length})</h2>
-            <p className="text-gray-600">Review and approve new facility submissions</p>
+            <div className="flex items-center gap-4 mb-2">
+              <h2 className="text-xl font-semibold">
+                Pending Approvals ({totalCount})
+              </h2>
+              {user && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">👤 {user.name}</Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      localStorage.removeItem("token");
+                      localStorage.removeItem("user");
+                      setShowLogin(true);
+                    }}
+                  >
+                    Logout
+                  </Button>
+                </div>
+              )}
+            </div>
+            <p className="text-gray-600">
+              Review and approve new facility submissions
+            </p>
           </div>
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <Select value={filterStatus} onValueChange={handleFilterChange}>
             <SelectTrigger className="w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="pending">⏳ Pending</SelectItem>
-              <SelectItem value="under_review">👀 Under Review</SelectItem>
+              <SelectItem value="approved">✅ Approved</SelectItem>
+              <SelectItem value="all">📋 All Venues</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
       <div className="space-y-6">
-        {filteredFacilities.map((facility) => (
-          <Card key={facility.id} className="hover:shadow-lg transition-shadow">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-4 mb-4">
-                    <div>
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-xl font-semibold">{facility.name}</h3>
-                        <Badge variant={getStatusBadgeVariant(facility.status)}>
-                          {facility.status === 'pending' && '⏳'}
-                          {facility.status === 'under_review' && '👀'}
-                          {' '}{facility.status.replace('_', ' ').toUpperCase()}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-4 text-sm text-gray-600">
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-4 h-4" />
-                          {facility.location.city}, {facility.location.state}
-                        </span>
-                        <span>📅 Submitted: {new Date(facility.submittedDate).toLocaleDateString()}</span>
-                        <Badge variant="outline">
-                          {facility.facilities.type === 'Indoor' ? '🏢' : '🌳'} {facility.facilities.type}
-                        </Badge>
-                      </div>
+        {isLoading
+          ? // Loading skeletons
+            Array.from({ length: 3 }).map((_, index) => (
+              <Card key={index} className="p-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-2">
+                      <Skeleton className="h-6 w-48" />
+                      <Skeleton className="h-4 w-64" />
+                    </div>
+                    <div className="space-y-2">
+                      <Skeleton className="h-8 w-24" />
+                      <Skeleton className="h-8 w-24" />
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <h4 className="font-medium mb-2">Owner Details</h4>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarFallback className="bg-primary text-primary-foreground">
-                            {facility.owner.avatar}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="font-medium">{facility.owner.name}</div>
-                          <div className="text-sm text-gray-600">{facility.owner.email}</div>
-                          <div className="text-sm text-gray-600">{facility.owner.phone}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <h4 className="font-medium mb-2">Courts & Pricing</h4>
-                      <div className="space-y-1">
-                        {facility.facilities.courts.map((court, index) => (
-                          <div key={index} className="text-sm">
-                            <span className="font-medium">{court.count}x {court.type}</span>
-                            <span className="text-gray-600 ml-2">₹{court.price}/hr</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h4 className="font-medium mb-2">Documents</h4>
-                      <div className="space-y-1">
-                        {facility.documents.map((doc, index) => (
-                          <div key={index} className="text-sm flex items-center gap-2">
-                            {doc.status === 'uploaded' ? 
-                              <CheckCircle className="w-4 h-4 text-green-600" /> : 
-                              <Clock className="w-4 h-4 text-yellow-600" />
-                            }
-                            <span>{doc.name}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <h4 className="font-medium mb-2">Amenities</h4>
-                    <div className="flex gap-2 flex-wrap">
-                      {facility.facilities.amenities.map((amenity, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {getAmenityIcon(amenity)} {amenity}
-                        </Badge>
-                      ))}
-                    </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <Skeleton className="h-20 w-full" />
+                    <Skeleton className="h-20 w-full" />
+                    <Skeleton className="h-20 w-full" />
                   </div>
                 </div>
-
-                <div className="flex flex-col gap-2 ml-4">
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" onClick={() => setSelectedFacility(facility)}>
-                        <Eye className="w-4 h-4 mr-1" />
-                        View Details
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle>Facility Details - {facility.name}</DialogTitle>
-                      </DialogHeader>
-                      {selectedFacility && selectedFacility.id === facility.id && (
-                        <div className="space-y-6">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                              <h4 className="font-medium mb-3">Complete Address</h4>
-                              <div className="text-sm space-y-1">
-                                <div>{facility.location.address}</div>
-                                <div>{facility.location.city}, {facility.location.state}</div>
-                                <div>PIN: {facility.location.pincode}</div>
-                              </div>
-                            </div>
-                            
-                            <div>
-                              <h4 className="font-medium mb-3">Contact Information</h4>
-                              <div className="text-sm space-y-1">
-                                <div><strong>Owner:</strong> {facility.owner.name}</div>
-                                <div><strong>Email:</strong> {facility.owner.email}</div>
-                                <div><strong>Phone:</strong> {facility.owner.phone}</div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div>
-                            <h4 className="font-medium mb-3">Court Details & Pricing</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {facility.facilities.courts.map((court, index) => (
-                                <div key={index} className="border rounded-lg p-4">
-                                  <div className="font-medium">{court.type} Courts</div>
-                                  <div className="text-sm text-gray-600">Count: {court.count}</div>
-                                  <div className="text-lg font-bold text-green-600">₹{court.price}/hour</div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div>
-                            <h4 className="font-medium mb-3">Facility Images</h4>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              {facility.images.map((image, index) => (
-                                <div key={index} className="aspect-square bg-gray-100 border rounded-lg flex items-center justify-center">
-                                  <div className="text-center text-gray-500">
-                                    <Camera className="w-8 h-8 mx-auto mb-2" />
-                                    <div className="text-xs">{image}</div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div>
-                            <h4 className="font-medium mb-3">All Amenities</h4>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                              {facility.facilities.amenities.map((amenity, index) => (
-                                <div key={index} className="flex items-center gap-2 text-sm">
-                                  {getAmenityIcon(amenity)}
-                                  <span>{amenity}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div>
-                            <h4 className="font-medium mb-3">Document Status</h4>
-                            <div className="space-y-2">
-                              {facility.documents.map((doc, index) => (
-                                <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                                  <div className="flex items-center gap-3">
-                                    {doc.status === 'uploaded' ? 
-                                      <CheckCircle className="w-5 h-5 text-green-600" /> : 
-                                      <Clock className="w-5 h-5 text-yellow-600" />
-                                    }
-                                    <span>{doc.name}</span>
-                                  </div>
-                                  <Badge variant={doc.status === 'uploaded' ? 'default' : 'secondary'}>
-                                    {doc.status === 'uploaded' ? '✅ Uploaded' : '⏳ Pending'}
-                                  </Badge>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </DialogContent>
-                  </Dialog>
-
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                        <CheckCircle className="w-4 h-4 mr-1" />
-                        Approve
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Approve Facility</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Are you sure you want to approve "{facility.name}"? This facility will be live on the platform and users can start booking.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleApprove(facility.id)}>
-                          Approve Facility
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="destructive" size="sm">
-                        <X className="w-4 h-4 mr-1" />
-                        Reject
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Reject Facility - {facility.name}</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4">
+              </Card>
+            ))
+          : venues.map((venue) => (
+              <Card
+                key={venue.id}
+                className="hover:shadow-lg transition-shadow"
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-4 mb-4">
                         <div>
-                          <label className="text-sm font-medium">Reason for rejection:</label>
-                          <Textarea
-                            placeholder="Please provide a detailed reason for rejection..."
-                            value={rejectReason}
-                            onChange={(e) => setRejectReason(e.target.value)}
-                            className="mt-2"
-                          />
-                        </div>
-                        <div className="flex justify-end gap-2">
-                          <DialogTrigger asChild>
-                            <Button variant="outline">Cancel</Button>
-                          </DialogTrigger>
-                          <DialogTrigger asChild>
-                            <Button 
-                              variant="destructive" 
-                              onClick={() => handleReject(facility.id, rejectReason)}
-                              disabled={!rejectReason.trim()}
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-xl font-semibold">
+                              {venue.name}
+                            </h3>
+                            <Badge
+                              variant={getStatusBadgeVariant(
+                                venue.isApproved ? "approved" : "pending"
+                              )}
                             >
-                              Reject Facility
-                            </Button>
-                          </DialogTrigger>
+                              {venue.isApproved ? "✅ APPROVED" : "⏳ PENDING"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-gray-600">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-4 h-4" />
+                              {venue.location}
+                            </span>
+                            <span>
+                              📅 Submitted:{" "}
+                              {new Date(venue.createdAt).toLocaleDateString()}
+                            </span>
+                            <Badge variant="outline">🏢 Facility</Badge>
+                          </div>
                         </div>
                       </div>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
 
-        {filteredFacilities.length === 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div>
+                          <h4 className="font-medium mb-2">Contact Details</h4>
+                          <div className="space-y-1 text-sm">
+                            <div>
+                              <strong>Email:</strong> {venue.contactEmail}
+                            </div>
+                            <div>
+                              <strong>Phone:</strong> {venue.contactPhone}
+                            </div>
+                            <div>
+                              <strong>Address:</strong> {venue.address}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="font-medium mb-2">Facility Info</h4>
+                          <div className="space-y-1 text-sm">
+                            <div>
+                              <strong>Rating:</strong>{" "}
+                              {venue.rating
+                                ? `${venue.rating}/5`
+                                : "No ratings yet"}
+                            </div>
+                            <div>
+                              <strong>Reviews:</strong>{" "}
+                              {venue.totalReviews || 0}
+                            </div>
+                            <div>
+                              <strong>ID:</strong> #{venue.id}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="font-medium mb-2">Description</h4>
+                          <div className="text-sm text-gray-600">
+                            {venue.description
+                              ? venue.description.substring(0, 100) +
+                                (venue.description.length > 100 ? "..." : "")
+                              : "No description provided"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mb-4">
+                        <h4 className="font-medium mb-2">Amenities</h4>
+                        <div className="flex gap-2 flex-wrap">
+                          {venue.amenities && venue.amenities.length > 0 ? (
+                            venue.amenities.map((amenity, index) => (
+                              <Badge
+                                key={index}
+                                variant="outline"
+                                className="text-xs"
+                              >
+                                {getAmenityIcon(amenity)} {amenity}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-sm text-gray-500">
+                              No amenities listed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2 ml-4">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedFacility(venue)}
+                          >
+                            <Eye className="w-4 h-4 mr-1" />
+                            View Details
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
+                          <DialogHeader>
+                            <DialogTitle>
+                              Facility Details - {venue.name}
+                            </DialogTitle>
+                          </DialogHeader>
+                          {selectedFacility &&
+                            selectedFacility.id === venue.id && (
+                              <div className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  <div>
+                                    <h4 className="font-medium mb-3">
+                                      Complete Address
+                                    </h4>
+                                    <div className="text-sm space-y-1">
+                                      <div>{venue.address}</div>
+                                      <div>{venue.location}</div>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <h4 className="font-medium mb-3">
+                                      Contact Information
+                                    </h4>
+                                    <div className="text-sm space-y-1">
+                                      <div>
+                                        <strong>Email:</strong>{" "}
+                                        {venue.contactEmail}
+                                      </div>
+                                      <div>
+                                        <strong>Phone:</strong>{" "}
+                                        {venue.contactPhone}
+                                      </div>
+                                      <div>
+                                        <strong>Venue ID:</strong> #{venue.id}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <h4 className="font-medium mb-3">
+                                    Facility Description
+                                  </h4>
+                                  <div className="text-sm">
+                                    {venue.description ||
+                                      "No description provided"}
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <h4 className="font-medium mb-3">
+                                    All Amenities
+                                  </h4>
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    {venue.amenities &&
+                                    venue.amenities.length > 0 ? (
+                                      venue.amenities.map((amenity, index) => (
+                                        <div
+                                          key={index}
+                                          className="flex items-center gap-2 text-sm"
+                                        >
+                                          {getAmenityIcon(amenity)}
+                                          <span>{amenity}</span>
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <span className="text-sm text-gray-500">
+                                        No amenities listed
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <h4 className="font-medium mb-3">
+                                    Facility Stats
+                                  </h4>
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div className="border rounded-lg p-4">
+                                      <div className="font-medium">Rating</div>
+                                      <div className="text-lg font-bold text-orange-600">
+                                        {venue.rating
+                                          ? `${venue.rating}/5`
+                                          : "No ratings yet"}
+                                      </div>
+                                    </div>
+                                    <div className="border rounded-lg p-4">
+                                      <div className="font-medium">
+                                        Total Reviews
+                                      </div>
+                                      <div className="text-lg font-bold text-blue-600">
+                                        {venue.totalReviews || 0}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                        </DialogContent>
+                      </Dialog>
+
+                      {!venue.isApproved && (
+                        <>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                <CheckCircle className="w-4 h-4 mr-1" />
+                                Approve
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                  Approve Facility
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to approve "{venue.name}
+                                  "? This facility will be live on the platform
+                                  and users can start booking.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleApprove(venue.id)}
+                                >
+                                  Approve Facility
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+
+                          <Dialog
+                            open={isRejectDialogOpen}
+                            onOpenChange={setIsRejectDialogOpen}
+                          >
+                            <DialogTrigger asChild>
+                              <Button variant="destructive" size="sm">
+                                <X className="w-4 h-4 mr-1" />
+                                Reject
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>
+                                  Reject Facility - {venue.name}
+                                </DialogTitle>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div>
+                                  <label className="text-sm font-medium">
+                                    Reason for rejection:
+                                  </label>
+                                  <Textarea
+                                    placeholder="Please provide a detailed reason for rejection (minimum 10 characters)..."
+                                    value={rejectReason}
+                                    onChange={(e) =>
+                                      setRejectReason(e.target.value)
+                                    }
+                                    className="mt-2"
+                                    rows={4}
+                                  />
+                                  <div className="mt-1 text-xs text-gray-500">
+                                    {rejectReason.length}/500 characters 
+                                    {rejectReason.length < 10 && (
+                                      <span className="text-red-500 ml-2">
+                                        (minimum 10 characters required)
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                      setIsRejectDialogOpen(false);
+                                      setRejectReason("");
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    onClick={() =>
+                                      handleReject(venue.id, rejectReason)
+                                    }
+                                    disabled={
+                                      rejectReason.trim().length < 10 ||
+                                      rejectReason.trim().length > 500 ||
+                                      reviewVenueMutation.isPending
+                                    }
+                                  >
+                                    {reviewVenueMutation.isPending
+                                      ? "Rejecting..."
+                                      : "Reject Facility"}
+                                  </Button>
+                                </div>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+        {!isLoading && venues.length === 0 && (
           <Card className="p-8 text-center">
             <div className="text-gray-500">
               <div className="text-4xl mb-4">🏟️</div>
-              <h3 className="text-lg font-medium mb-2">No pending facilities</h3>
-              <p>All facility submissions have been processed.</p>
+              <h3 className="text-lg font-medium mb-2">No facilities found</h3>
+              <p>No facilities match the current filter criteria.</p>
             </div>
           </Card>
         )}

@@ -13,6 +13,13 @@ class Venue {
     this.totalReviews = venueData.total_reviews;
     this.ownerId = venueData.owner_id;
     this.isApproved = venueData.is_approved;
+    this.contactEmail = venueData.contact_email;
+    this.contactPhone = venueData.contact_phone;
+    this.rejectionReason = venueData.rejection_reason;
+    this.rejectedAt = venueData.rejected_at;
+    this.rejectedBy = venueData.rejected_by;
+    this.approvedAt = venueData.approved_at;
+    this.approvedBy = venueData.approved_by;
     this.createdAt = venueData.created_at;
     this.updatedAt = venueData.updated_at;
   }

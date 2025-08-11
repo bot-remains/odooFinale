@@ -5,7 +5,7 @@ import { UserRole } from "@/lib/types";
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: UserRole[];
-  requireAdmin?: boolean; // Keep for backward compatibility
+  requireAdmin?: boolean;
 }
 
 const ProtectedRoute = ({
@@ -21,7 +21,6 @@ const ProtectedRoute = ({
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 
-  // Handle legacy requireAdmin prop
   if (requireAdmin && user.role !== "admin") {
     return <Navigate to="/" replace />;
   }

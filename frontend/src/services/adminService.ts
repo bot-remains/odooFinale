@@ -2,21 +2,37 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, handleApiError, ApiResponse, PaginatedResponse } from "@/lib/api";
 import {
   AdminDashboardStats,
+  BackendDashboardResponse,
   User,
   Venue,
   UserManagementParams,
   UserStatusUpdate,
   VenueReviewAction,
   SystemReport,
+  RecentActivity,
 } from "@/lib/types";
 
 // API calls
 const adminApi = {
   getDashboard: async (): Promise<AdminDashboardStats> => {
-    const response = await api.get<ApiResponse<AdminDashboardStats>>(
+    const response = await api.get<ApiResponse<BackendDashboardResponse>>(
       "/admin/dashboard"
     );
-    return response.data.data!;
+
+    // Map backend response to frontend types
+    const data = response.data.data!;
+    return {
+      totalUsers: data.stats.total_customers + data.stats.total_owners,
+      totalVenues: data.stats.total_venues,
+      totalBookings: data.stats.total_bookings,
+      totalRevenue: data.stats.total_revenue,
+      pendingVenues: data.stats.pending_venues,
+      activeUsers: data.stats.total_customers + data.stats.total_owners, // Adjust based on actual active users logic
+      recentBookings: [], // Would need separate endpoint for actual recent bookings
+      topVenues: [], // Would need additional endpoint for top venues
+      trends: data.trends || [],
+      recentActivities: data.recentActivities || [],
+    };
   },
 
   getUsers: async (
@@ -51,17 +67,30 @@ const adminApi = {
 
   getVenuesForReview: async (
     params: {
-      status?: "pending" | "approved" | "rejected";
+      status?: "pending" | "approved" | "all";
       search?: string;
       limit?: number;
       offset?: number;
     } = {}
   ): Promise<PaginatedResponse<Venue>> => {
-    const response = await api.get<ApiResponse<PaginatedResponse<Venue>>>(
-      "/admin/venues",
-      { params }
-    );
-    return response.data.data!;
+    const response = await api.get<
+      ApiResponse<{
+        venues: Venue[];
+        pagination: {
+          total: number;
+          limit: number;
+          offset: number;
+          hasNext: boolean;
+        };
+      }>
+    >("/admin/venues", { params });
+
+    // Transform backend response to match frontend expected structure
+    const backendData = response.data.data!;
+    return {
+      items: backendData.venues,
+      pagination: backendData.pagination,
+    };
   },
 
   reviewVenue: async (
@@ -149,7 +178,7 @@ export const useAdminUserDetails = (userId: number) => {
 
 export const useAdminVenues = (
   params: {
-    status?: "pending" | "approved" | "rejected";
+    status?: "pending" | "approved" | "all";
     search?: string;
     limit?: number;
     offset?: number;

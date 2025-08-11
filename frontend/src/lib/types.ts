@@ -273,6 +273,45 @@ export interface AdminDashboardStats {
   activeUsers: number;
   recentBookings: Booking[];
   topVenues: Venue[];
+  trends?: TrendData[];
+  recentActivities?: RecentActivity[];
+}
+
+export interface TrendData {
+  month: string;
+  bookings: number;
+  revenue: number;
+}
+
+export interface RecentActivity {
+  type: string;
+  title: string;
+  timestamp: string;
+  user_name: string;
+  entity_type: string;
+  entity_id: number;
+}
+
+// Backend response interfaces
+export interface BackendDashboardStats {
+  total_customers: number;
+  total_owners: number;
+  total_venues: number;
+  approved_venues: number;
+  pending_venues: number;
+  active_courts: number;
+  total_bookings: number;
+  confirmed_bookings: number;
+  pending_bookings: number;
+  cancelled_bookings: number;
+  total_reviews: number;
+  total_revenue: number;
+}
+
+export interface BackendDashboardResponse {
+  stats: BackendDashboardStats;
+  trends: TrendData[];
+  recentActivities: RecentActivity[];
 }
 
 export interface UserManagementParams {
