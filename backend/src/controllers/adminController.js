@@ -1,107 +1,32 @@
 import { validationResult } from 'express-validator';
-import Venue from '../models/Venue.js';
-import User from '../models/User.js';
-import Booking from '../models/Booking.js';
-import Court from '../models/Court.js';
-import Review from '../models/Review.js';
 import prisma from '../config/prisma.js';
 
 // Admin Dashboard - Get system statistics
 export const getAdminDashboard = async (req, res) => {
   try {
+    // Get basic stats
     const [
-      totalCustomers,
-      totalOwners,
+      totalUsers,
+      facilityOwners,
       totalVenues,
       approvedVenues,
       pendingVenues,
-      activeCourts,
       totalBookings,
       confirmedBookings,
-      pendingBookings,
-      cancelledBookings,
-      totalReviews,
-      revenueResult,
+      totalRevenue,
     ] = await Promise.all([
-      prisma.user.count({ where: { role: 'customer' } }),
+      prisma.user.count({ where: { role: { not: 'admin' } } }),
       prisma.user.count({ where: { role: 'facility_owner' } }),
       prisma.venue.count(),
       prisma.venue.count({ where: { isApproved: true } }),
       prisma.venue.count({ where: { isApproved: false } }),
-      prisma.court.count({ where: { isActive: true } }),
       prisma.booking.count(),
       prisma.booking.count({ where: { status: 'confirmed' } }),
-      prisma.booking.count({ where: { status: 'pending' } }),
-      prisma.booking.count({ where: { status: 'cancelled' } }),
-      prisma.review.count(),
       prisma.booking.aggregate({
         where: { status: 'confirmed' },
         _sum: { totalAmount: true },
       }),
     ]);
-
-    // Get system statistics
-    const statsQuery = `
-      SELECT
-        (SELECT COUNT(*) FROM users WHERE role = 'user') as total_customers,
-        (SELECT COUNT(*) FROM users WHERE role = 'facility_owner') as total_owners,
-        (SELECT COUNT(*) FROM users WHERE role = 'admin') as total_admins,
-        (SELECT COUNT(*) FROM users) as total_users,
-        (SELECT COUNT(*) FROM venues) as total_venues,
-        (SELECT COUNT(*) FROM venues WHERE is_approved = true) as approved_venues,
-        (SELECT COUNT(*) FROM venues WHERE is_approved = false) as pending_venues,
-        (SELECT COUNT(*) FROM courts WHERE is_active = true) as active_courts,
-        (SELECT COUNT(*) FROM bookings) as total_bookings,
-        (SELECT COUNT(*) FROM bookings WHERE status = 'confirmed') as confirmed_bookings,
-        (SELECT COUNT(*) FROM bookings WHERE status = 'pending') as pending_bookings,
-        (SELECT COUNT(*) FROM bookings WHERE status = 'cancelled') as cancelled_bookings,
-        (SELECT COUNT(*) FROM reviews) as total_reviews,
-        (SELECT SUM(total_amount) FROM bookings WHERE status = 'confirmed') as total_revenue
-    `;
-
-    const statsResult = await query(statsQuery);
-    const stats = statsResult.rows[0];
-
-    // Get monthly booking trends (last 12 months)
-    const twelveMonthsAgo = new Date();
-    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
-
-    const bookings = await prisma.booking.findMany({
-      where: {
-        createdAt: {
-          gte: twelveMonthsAgo,
-        },
-      },
-      select: {
-        createdAt: true,
-        totalAmount: true,
-      },
-    });
-
-    // Get monthly booking trends (simplified)
-    const monthlyTrends = await prisma.booking.groupBy({
-      by: ['createdAt'],
-      where: {
-        createdAt: {
-          gte: new Date(new Date().getFullYear(), 0, 1), // Current year
-        },
-      },
-      _count: {
-        id: true,
-      },
-      _sum: {
-        totalAmount: true,
-      },
-    });
-
-    // Simple trend data
-    const trendResult = [
-      {
-        month: new Date(),
-        bookings: totalBookings,
-        revenue: totalRevenue,
-      },
-    ];
 
     // Get recent activities
     const [recentVenues, recentBookings] = await Promise.all([
@@ -123,84 +48,34 @@ export const getAdminDashboard = async (req, res) => {
       }),
     ]);
 
-    // Format activities
-    const activities = [
-      ...recentVenues.map((venue) => ({
-        type: 'venue_created',
-        title: venue.name,
-        timestamp: venue.createdAt,
-        user_name: venue.owner.name,
-        entity_type: 'venue',
-        entity_id: venue.id,
-      })),
-      ...recentBookings.map((booking) => ({
-        type: 'booking_created',
-        title: `${booking.venue.name} - ${booking.court.name}`,
-        timestamp: booking.createdAt,
-        user_name: booking.user.name,
-        entity_type: 'booking',
-        entity_id: booking.id,
-      })),
-    ]
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 10);
-
-    // Get recent bookings (last 10)
-    const recentBookingsQuery = `
-      SELECT
-        b.id,
-        b.booking_date,
-        b.start_time,
-        b.end_time,
-        b.total_amount,
-        b.status,
-        b.created_at,
-        c.name as court_name,
-        c.sport_type,
-        v.name as venue_name,
-        u.name as user_name,
-        u.email as user_email
-      FROM bookings b
-      JOIN courts c ON b.court_id = c.id
-      JOIN venues v ON c.venue_id = v.id
-      JOIN users u ON b.user_id = u.id
-      ORDER BY b.created_at DESC
-      LIMIT 10
-    `;
-
-    const recentBookingsResult = await query(recentBookingsQuery);
-
-    // Get top venues by booking count
-    const topVenuesQuery = `
-      SELECT
-        v.id,
-        v.name,
-        v.location,
-        COUNT(b.id) as booking_count,
-        AVG(v.rating) as avg_rating,
-        SUM(CASE WHEN b.status = 'confirmed' THEN b.total_amount ELSE 0 END) as total_revenue
-      FROM venues v
-      LEFT JOIN courts c ON v.id = c.venue_id
-      LEFT JOIN bookings b ON c.id = b.court_id
-      WHERE v.is_approved = true
-      GROUP BY v.id, v.name, v.location
-      ORDER BY booking_count DESC
-      LIMIT 5
-    `;
-
-    const topVenuesResult = await query(topVenuesQuery);
-
     res.json({
       success: true,
       data: {
         stats: {
-          ...stats,
-          total_revenue: parseFloat(stats.total_revenue || 0),
+          total_users: totalUsers,
+          facility_owners: facilityOwners,
+          total_venues: totalVenues,
+          approved_venues: approvedVenues,
+          pending_venues: pendingVenues,
+          total_bookings: totalBookings,
+          confirmed_bookings: confirmedBookings,
+          total_revenue: parseFloat(totalRevenue._sum.totalAmount || 0),
         },
-        trends: trendResult.rows,
-        recentActivities: activitiesResult.rows,
-        recentBookings: recentBookingsResult.rows,
-        topVenues: topVenuesResult.rows,
+        recentVenues: recentVenues.map((venue) => ({
+          id: venue.id,
+          name: venue.name,
+          owner_name: venue.owner.name,
+          created_at: venue.createdAt,
+          is_approved: venue.isApproved,
+        })),
+        recentBookings: recentBookings.map((booking) => ({
+          id: booking.id,
+          venue_name: booking.venue.name,
+          court_name: booking.court.name,
+          user_name: booking.user.name,
+          created_at: booking.createdAt,
+          status: booking.status,
+        })),
       },
     });
   } catch (error) {
@@ -247,18 +122,9 @@ export const getAllVenuesForReview = async (req, res) => {
     }
 
     // Determine sort order
-    const validSortFields = ['createdAt', 'name', 'location'];
-    const sortField =
-      sortBy === 'created_at'
-        ? 'createdAt'
-        : validSortFields.includes(sortBy)
-          ? sortBy
-          : 'createdAt';
+    const sortField = sortBy === 'created_at' ? 'createdAt' : 'createdAt';
     const order = sortOrder.toLowerCase() === 'asc' ? 'asc' : 'desc';
 
-    const orderBy = { [sortField]: order };
-
-    // Get venues with aggregated data
     const venues = await prisma.venue.findMany({
       where: whereConditions,
       include: {
@@ -268,39 +134,17 @@ export const getAllVenuesForReview = async (req, res) => {
             email: true,
           },
         },
-        courts: {
-          select: {
-            id: true,
-            pricePerHour: true,
-            _count: {
-              select: {
-                bookings: true,
-              },
-            },
-          },
-        },
         _count: {
           select: {
             courts: true,
           },
         },
       },
-      orderBy,
+      orderBy: { [sortField]: order },
       take: parseInt(limit),
       skip: parseInt(offset),
     });
 
-    // Transform data to match expected format
-    const transformedVenues = venues.map((venue) => ({
-      ...venue,
-      owner_name: venue.owner.name,
-      owner_email: venue.owner.email,
-      courts_count: venue._count.courts,
-      total_bookings: venue.courts.length > 0 ? venue.courts[0]._count.bookings || 0 : 0,
-      avg_price: venue.courts.length > 0 ? parseFloat(venue.courts[0].pricePerHour || 0) : 0,
-    }));
-
-    // Get total count
     const total = await prisma.venue.count({
       where: whereConditions,
     });
@@ -308,7 +152,21 @@ export const getAllVenuesForReview = async (req, res) => {
     res.json({
       success: true,
       data: {
-        venues: transformedVenues,
+        venues: venues.map((venue) => ({
+          id: venue.id,
+          name: venue.name,
+          description: venue.description,
+          address: venue.address,
+          location: venue.location,
+          owner_name: venue.owner.name,
+          owner_email: venue.owner.email,
+          courts_count: venue._count.courts,
+          is_approved: venue.isApproved,
+          created_at: venue.createdAt,
+          approved_at: venue.approvedAt,
+          rejected_at: venue.rejectedAt,
+          rejection_reason: venue.rejectionReason,
+        })),
         pagination: {
           total,
           limit: parseInt(limit),
@@ -340,9 +198,12 @@ export const reviewVenue = async (req, res) => {
     }
 
     const { venueId } = req.params;
-    const { action, rejectionReason } = req.body; // action: 'approve' or 'reject'
+    const { action, rejectionReason } = req.body;
 
-    const venue = await Venue.findById(venueId);
+    const venue = await prisma.venue.findUnique({
+      where: { id: parseInt(venueId) },
+    });
+
     if (!venue) {
       return res.status(404).json({
         success: false,
@@ -350,26 +211,19 @@ export const reviewVenue = async (req, res) => {
       });
     }
 
-    if (venue.isApproved) {
-      return res.status(400).json({
-        success: false,
-        message: 'Venue is already approved',
-      });
-    }
-
     if (action === 'approve') {
-      await venue.update({
-        isApproved: true,
-        approvedAt: new Date(),
-        approvedBy: req.user.id,
+      await prisma.venue.update({
+        where: { id: parseInt(venueId) },
+        data: {
+          isApproved: true,
+          approvedAt: new Date(),
+          approvedBy: req.user.id,
+        },
       });
-
-      // TODO: Send approval notification to venue owner
 
       res.json({
         success: true,
         message: 'Venue approved successfully',
-        data: venue.toJSON(),
       });
     } else if (action === 'reject') {
       if (!rejectionReason) {
@@ -379,23 +233,18 @@ export const reviewVenue = async (req, res) => {
         });
       }
 
-      await venue.update({
-        rejectionReason,
-        rejectedAt: new Date(),
-        rejectedBy: req.user.id,
+      await prisma.venue.update({
+        where: { id: parseInt(venueId) },
+        data: {
+          rejectionReason,
+          rejectedAt: new Date(),
+          rejectedBy: req.user.id,
+        },
       });
-
-      // TODO: Send rejection notification to venue owner
 
       res.json({
         success: true,
         message: 'Venue rejected successfully',
-        data: { venueId, rejectionReason },
-      });
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid action. Use "approve" or "reject"',
       });
     }
   } catch (error) {
@@ -408,13 +257,13 @@ export const reviewVenue = async (req, res) => {
   }
 };
 
-// Get all users with filters (converted to Prisma)
+// Get all users with filters
 export const getAllUsers = async (req, res) => {
   try {
     const {
       role,
       search,
-      status = 'active',
+      status = 'all',
       sortBy = 'createdAt',
       sortOrder = 'desc',
       limit = 20,
@@ -426,8 +275,10 @@ export const getAllUsers = async (req, res) => {
       role: { not: 'admin' }, // Don't show admin users
     };
 
-    if (role) {
-      whereClause.role = role;
+    if (role === 'facility_owner') {
+      whereClause.role = 'facility_owner';
+    } else if (role === 'user') {
+      whereClause.role = 'user';
     }
 
     if (search) {
@@ -443,7 +294,6 @@ export const getAllUsers = async (req, res) => {
       whereClause.isActive = false;
     }
 
-    // Build sort order
     const validSortFields = ['createdAt', 'name', 'email', 'lastLogin'];
     const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
     const order = sortOrder.toLowerCase() === 'asc' ? 'asc' : 'desc';
@@ -473,11 +323,18 @@ export const getAllUsers = async (req, res) => {
       success: true,
       data: {
         users: users.map((user) => ({
-          ...user,
-          password: undefined, // Don't send password hash
-          venuesCount: user._count.venues,
-          bookingsCount: user._count.bookings,
-          _count: undefined, // Remove the _count object
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          is_active: user.isActive,
+          is_verified: user.isVerified,
+          last_login: user.lastLogin,
+          created_at: user.createdAt,
+          suspended_at: user.suspendedAt,
+          suspension_reason: user.suspensionReason,
+          venues_count: user._count.venues,
+          bookings_count: user._count.bookings,
         })),
         pagination: {
           total,
@@ -497,13 +354,21 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-// Suspend or activate a user (converted to Prisma)
+// Suspend or activate a user (ban/unban)
 export const updateUserStatus = async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array(),
+      });
+    }
+
     const { userId } = req.params;
     const { action, reason } = req.body; // action: 'suspend' or 'activate'
 
-    // Check if user exists
     const user = await prisma.user.findUnique({
       where: { id: parseInt(userId) },
     });
@@ -566,61 +431,116 @@ export const updateUserStatus = async (req, res) => {
   }
 };
 
-// Get system reports (simplified)
+// Get system reports (for user complaints/reports)
 export const getSystemReports = async (req, res) => {
   try {
-    const { reportType } = req.query;
+    const { reportType = 'venues', startDate, endDate, limit = 20, offset = 0 } = req.query;
 
     let reportData = {};
+    let dateFilter = {};
+
+    if (startDate && endDate) {
+      dateFilter = {
+        createdAt: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
+      };
+    }
 
     switch (reportType) {
-      case 'bookings':
-        const [totalBookings, confirmedBookings, revenue] = await Promise.all([
-          prisma.booking.count(),
-          prisma.booking.count({ where: { status: 'confirmed' } }),
-          prisma.booking.aggregate({
-            where: { status: 'confirmed' },
-            _sum: { totalAmount: true },
-          }),
-        ]);
-
-        reportData = {
-          total_bookings: totalBookings,
-          confirmed_bookings: confirmedBookings,
-          total_revenue: revenue._sum.totalAmount || 0,
-        };
-        break;
-
       case 'venues':
-        const [totalVenues, approvedVenues] = await Promise.all([
-          prisma.venue.count(),
-          prisma.venue.count({ where: { isApproved: true } }),
-        ]);
+        // Get venue-related reports/issues
+        const problematicVenues = await prisma.venue.findMany({
+          where: {
+            OR: [{ isApproved: false }, { rejectionReason: { not: null } }],
+            ...dateFilter,
+          },
+          include: {
+            owner: { select: { name: true, email: true } },
+            _count: { select: { reviews: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: parseInt(limit),
+          skip: parseInt(offset),
+        });
 
         reportData = {
-          total_venues: totalVenues,
-          approved_venues: approvedVenues,
+          venues: problematicVenues.map((venue) => ({
+            id: venue.id,
+            name: venue.name,
+            owner_name: venue.owner.name,
+            owner_email: venue.owner.email,
+            is_approved: venue.isApproved,
+            rejection_reason: venue.rejectionReason,
+            reviews_count: venue._count.reviews,
+            created_at: venue.createdAt,
+          })),
         };
         break;
 
       case 'users':
-        const [totalUsers, customers, owners] = await Promise.all([
-          prisma.user.count({ where: { role: { not: 'admin' } } }),
-          prisma.user.count({ where: { role: 'customer' } }),
-          prisma.user.count({ where: { role: 'facility_owner' } }),
-        ]);
+        // Get user-related reports
+        const suspendedUsers = await prisma.user.findMany({
+          where: {
+            isActive: false,
+            suspendedAt: { not: null },
+            ...dateFilter,
+          },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            suspendedAt: true,
+            suspensionReason: true,
+          },
+          orderBy: { suspendedAt: 'desc' },
+          take: parseInt(limit),
+          skip: parseInt(offset),
+        });
 
         reportData = {
-          total_users: totalUsers,
-          customers: customers,
-          facility_owners: owners,
+          suspended_users: suspendedUsers,
+        };
+        break;
+
+      case 'bookings':
+        // Get booking-related reports
+        const cancelledBookings = await prisma.booking.findMany({
+          where: {
+            status: 'cancelled',
+            cancellationReason: { not: null },
+            ...dateFilter,
+          },
+          include: {
+            user: { select: { name: true, email: true } },
+            venue: { select: { name: true } },
+            court: { select: { name: true } },
+          },
+          orderBy: { cancelledAt: 'desc' },
+          take: parseInt(limit),
+          skip: parseInt(offset),
+        });
+
+        reportData = {
+          cancelled_bookings: cancelledBookings.map((booking) => ({
+            id: booking.id,
+            user_name: booking.user.name,
+            user_email: booking.user.email,
+            venue_name: booking.venue.name,
+            court_name: booking.court.name,
+            cancellation_reason: booking.cancellationReason,
+            cancelled_at: booking.cancelledAt,
+            booking_date: booking.bookingDate,
+          })),
         };
         break;
 
       default:
         return res.status(400).json({
           success: false,
-          message: 'Invalid report type',
+          message: 'Invalid report type. Use: venues, users, or bookings',
         });
     }
 
@@ -637,3 +557,170 @@ export const getSystemReports = async (req, res) => {
     });
   }
 };
+
+// Get chart data for admin dashboard
+export const getChartData = async (req, res) => {
+  try {
+    const { type = 'monthly' } = req.query;
+
+    let chartData = {};
+
+    if (type === 'monthly') {
+      // Get data for the last 6 months
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      // Get monthly aggregated data
+      const monthlyStats = await prisma.$queryRaw`
+        SELECT
+          DATE_TRUNC('month', "created_at") as month,
+          COUNT(*) as count,
+          'users' as type
+        FROM "users"
+        WHERE "created_at" >= ${sixMonthsAgo} AND "role" != 'admin'
+        GROUP BY DATE_TRUNC('month', "created_at")
+        ORDER BY month
+      `;
+
+      const monthlyVenues = await prisma.$queryRaw`
+        SELECT
+          DATE_TRUNC('month', "created_at") as month,
+          COUNT(*) as count,
+          'venues' as type
+        FROM "venues"
+        WHERE "created_at" >= ${sixMonthsAgo}
+        GROUP BY DATE_TRUNC('month', "created_at")
+        ORDER BY month
+      `;
+
+      const monthlyBookings = await prisma.$queryRaw`
+        SELECT
+          DATE_TRUNC('month', "created_at") as month,
+          COUNT(*) as count,
+          SUM("total_amount") as revenue,
+          'bookings' as type
+        FROM "bookings"
+        WHERE "created_at" >= ${sixMonthsAgo}
+        GROUP BY DATE_TRUNC('month', "created_at")
+        ORDER BY month
+      `;
+
+      // Format data for charts
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+
+      const monthlyData = [];
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const monthName = months[date.getMonth()];
+
+        const users = monthlyStats.find((s) => {
+          const statMonth = new Date(s.month);
+          return (
+            statMonth.getMonth() === date.getMonth() &&
+            statMonth.getFullYear() === date.getFullYear()
+          );
+        });
+
+        const venues = monthlyVenues.find((v) => {
+          const venueMonth = new Date(v.month);
+          return (
+            venueMonth.getMonth() === date.getMonth() &&
+            venueMonth.getFullYear() === date.getFullYear()
+          );
+        });
+
+        const bookings = monthlyBookings.find((b) => {
+          const bookingMonth = new Date(b.month);
+          return (
+            bookingMonth.getMonth() === date.getMonth() &&
+            bookingMonth.getFullYear() === date.getFullYear()
+          );
+        });
+
+        monthlyData.push({
+          month: monthName,
+          users: parseInt(users?.count) || 0,
+          venues: parseInt(venues?.count) || 0,
+          bookings: parseInt(bookings?.count) || 0,
+          revenue: parseFloat(bookings?.revenue) || 0,
+        });
+      }
+
+      chartData.monthlyGrowth = monthlyData;
+    }
+
+    if (type === 'sports' || type === 'monthly') {
+      // Get sport popularity data using the correct field name
+      const sportBookings = await prisma.$queryRaw`
+        SELECT
+          c.sport_type as sport,
+          COUNT(b.id) as booking_count
+        FROM "courts" c
+        LEFT JOIN "bookings" b ON c.id = b."court_id"
+        GROUP BY c.sport_type
+        ORDER BY booking_count DESC
+      `;
+
+      chartData.sportPopularity = sportBookings.map((sport) => ({
+        sport: sport.sport,
+        bookings: parseInt(sport.booking_count) || 0,
+        color: getSportColor(sport.sport),
+      }));
+    }
+
+    if (type === 'venues' || type === 'monthly') {
+      // Get venue status distribution
+      const [approved, pending, rejected] = await Promise.all([
+        prisma.venue.count({ where: { isApproved: true } }),
+        prisma.venue.count({ where: { isApproved: false } }),
+        prisma.venue.count({ where: { isApproved: false } }), // For now, treating all unapproved as pending
+      ]);
+
+      chartData.venueStatus = [
+        { name: 'Active', value: approved, color: '#10b981' },
+        { name: 'Pending', value: pending, color: '#f59e0b' },
+        { name: 'Rejected', value: 0, color: '#ef4444' }, // No rejected status in current schema
+      ];
+    }
+
+    res.json({
+      success: true,
+      data: chartData,
+    });
+  } catch (error) {
+    console.error('Get chart data error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch chart data',
+      error: error.message,
+    });
+  }
+};
+
+// Helper function to get sport colors
+function getSportColor(sport) {
+  const colors = {
+    Badminton: '#8884d8',
+    Cricket: '#82ca9d',
+    Football: '#ffc658',
+    Tennis: '#ff7300',
+    Basketball: '#00ff88',
+    Swimming: '#8dd1e1',
+    'Table Tennis': '#d084d0',
+  };
+  return colors[sport] || '#8884d8';
+}

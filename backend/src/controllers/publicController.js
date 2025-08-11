@@ -53,15 +53,24 @@ const enrichVenueData = async (venues) => {
 const getSportDescription = (sportName) => {
   const sport = sportName.toLowerCase();
   switch (sport) {
-    case 'badminton': return 'Indoor racquet sport with shuttlecock';
-    case 'tennis': return 'Racquet sport on court';
-    case 'football': return 'Team sport played with feet';
-    case 'cricket': return 'Bat and ball sport with wickets';
-    case 'swimming': return 'Aquatic sport and exercise';
-    case 'table tennis': return 'Indoor paddle sport';
-    case 'basketball': return 'Team sport with hoops';
-    case 'volleyball': return 'Team sport with net';
-    default: return 'Popular sport activity';
+    case 'badminton':
+      return 'Indoor racquet sport with shuttlecock';
+    case 'tennis':
+      return 'Racquet sport on court';
+    case 'football':
+      return 'Team sport played with feet';
+    case 'cricket':
+      return 'Bat and ball sport with wickets';
+    case 'swimming':
+      return 'Aquatic sport and exercise';
+    case 'table tennis':
+      return 'Indoor paddle sport';
+    case 'basketball':
+      return 'Team sport with hoops';
+    case 'volleyball':
+      return 'Team sport with net';
+    default:
+      return 'Popular sport activity';
   }
 };
 
@@ -239,12 +248,12 @@ export const getAllVenues = async (req, res) => {
       finalVenues = enrichedVenues.sort((a, b) => {
         const priceA = a.min_price;
         const priceB = b.min_price;
-        
+
         // Handle null values - venues with prices should always come first
         if (priceA === null && priceB === null) return 0;
         if (priceA === null) return 1; // venues without prices come last
         if (priceB === null) return -1; // venues with prices come first
-        
+
         // Both have prices, sort by price value
         if (sortOrder === 'asc') {
           return priceA - priceB;
@@ -427,9 +436,7 @@ export const getAvailableTimeSlots = async (req, res) => {
     const bookedSlotIds = bookings.map((booking) => booking.timeSlotId);
 
     // Filter out booked time slots
-    const availableSlots = timeSlots.filter(
-      (slot) => !bookedSlotIds.includes(slot.id)
-    );
+    const availableSlots = timeSlots.filter((slot) => !bookedSlotIds.includes(slot.id));
 
     res.json({
       success: true,
@@ -602,14 +609,14 @@ export const getSportPricing = async (req, res) => {
       venueId: parseInt(venueId),
       sportType,
       venueName: courts[0].venue.name,
-      courts: courts.map(court => ({
+      courts: courts.map((court) => ({
         id: court.id,
         name: court.name,
         pricePerHour: court.pricePerHour,
       })),
       priceRange: {
-        min: Math.min(...courts.map(c => c.pricePerHour)),
-        max: Math.max(...courts.map(c => c.pricePerHour)),
+        min: Math.min(...courts.map((c) => c.pricePerHour)),
+        max: Math.max(...courts.map((c) => c.pricePerHour)),
       },
       operatingHours: courts[0].venue.operatingHours,
     };
@@ -740,22 +747,13 @@ export const getCourtsBySport = async (req, res) => {
             // Check for time overlap
             OR: [
               {
-                AND: [
-                  { startTime: { lte: startTime } },
-                  { endTime: { gt: startTime } },
-                ],
+                AND: [{ startTime: { lte: startTime } }, { endTime: { gt: startTime } }],
               },
               {
-                AND: [
-                  { startTime: { lt: endTime } },
-                  { endTime: { gte: endTime } },
-                ],
+                AND: [{ startTime: { lt: endTime } }, { endTime: { gte: endTime } }],
               },
               {
-                AND: [
-                  { startTime: { gte: startTime } },
-                  { endTime: { lte: endTime } },
-                ],
+                AND: [{ startTime: { gte: startTime } }, { endTime: { lte: endTime } }],
               },
             ],
           },
@@ -768,9 +766,9 @@ export const getCourtsBySport = async (req, res) => {
       });
 
       availableCourts = await Promise.all(availabilityPromises);
-      
+
       // Filter to only available courts if time filtering is requested
-      availableCourts = availableCourts.filter(court => court.isAvailable);
+      availableCourts = availableCourts.filter((court) => court.isAvailable);
     }
 
     // Process venue amenities and photos

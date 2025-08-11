@@ -8,37 +8,85 @@ import {
 } from "@/components/ui/chart";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   useVenueManagementDashboard,
   useMyVenues,
 } from "@/services/venueService";
-import { TrendingUp, Building, Calendar, DollarSign } from "lucide-react";
+import { useVenueBookings } from "@/services/bookingService";
+import {
+  TrendingUp,
+  Building,
+  Calendar,
+  DollarSign,
+  Users,
+  AlertCircle,
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import { format } from "date-fns";
+
+// Dashboard data interfaces
+interface DashboardStats {
+  total_venues: number;
+  total_courts: number;
+  approved_venues: number;
+  pending_venues: number;
+  active_courts: number;
+  total_bookings: number;
+  confirmed_bookings: number;
+  total_revenue: number;
+}
+
+interface DashboardRevenue {
+  total_revenue: number;
+  total_bookings: number;
+  period: string;
+}
+
+interface DashboardBooking {
+  id: number;
+  user_name: string;
+  venue_name: string;
+  court_name: string;
+  bookingDate: string;
+  startTime: string;
+  status: string;
+  totalAmount: number;
+}
+
+interface DashboardData {
+  stats: DashboardStats;
+  recentBookings: DashboardBooking[];
+  revenue: DashboardRevenue;
+}
 
 const OwnerDashboard = () => {
   const { data: dashboardData, isLoading: dashboardLoading } =
     useVenueManagementDashboard();
   const { data: venuesData, isLoading: venuesLoading } = useMyVenues();
+  const { data: recentBookings, isLoading: bookingsLoading } = useVenueBookings(
+    { limit: 10 }
+  );
 
-  // Type-safe access to dashboard data
-  const dashboard =
-    (dashboardData as {
-      totalBookings?: number;
-      monthlyRevenue?: number;
-      averageRating?: number;
-      occupancyRate?: number;
-      weeklyBookings?: number[];
-    }) || {};
+  // Extract stats from dashboard data with proper typing
+  const typedDashboardData = dashboardData as DashboardData | undefined;
+  const stats = typedDashboardData?.stats || ({} as DashboardStats);
+  const recentBookingsFromDashboard = typedDashboardData?.recentBookings || [];
+  const revenue = typedDashboardData?.revenue || ({} as DashboardRevenue);
 
   // Sample data for chart (fallback values if API doesn't provide weekly data)
   const weeklyData = [
-    { name: "Mon", bookings: dashboard.weeklyBookings?.[0] || 12 },
-    { name: "Tue", bookings: dashboard.weeklyBookings?.[1] || 18 },
-    { name: "Wed", bookings: dashboard.weeklyBookings?.[2] || 9 },
-    { name: "Thu", bookings: dashboard.weeklyBookings?.[3] || 22 },
-    { name: "Fri", bookings: dashboard.weeklyBookings?.[4] || 28 },
-    { name: "Sat", bookings: dashboard.weeklyBookings?.[5] || 35 },
-    { name: "Sun", bookings: dashboard.weeklyBookings?.[6] || 20 },
+    { name: "Mon", bookings: 12 },
+    { name: "Tue", bookings: 18 },
+    { name: "Wed", bookings: 9 },
+    { name: "Thu", bookings: 22 },
+    { name: "Fri", bookings: 28 },
+    { name: "Sat", bookings: 35 },
+    { name: "Sun", bookings: 20 },
   ];
+
+  const displayBookings = recentBookings || recentBookingsFromDashboard;
 
   return (
     <div className="container py-10">
@@ -57,13 +105,17 @@ const OwnerDashboard = () => {
                 <p className="text-sm font-medium text-gray-600">
                   Total Venues
                 </p>
-                {venuesLoading ? (
+                {dashboardLoading || venuesLoading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
                   <p className="text-2xl font-bold">
-                    {venuesData?.length || 0}
+                    {stats.total_venues || venuesData?.length || 0}
                   </p>
                 )}
+                <p className="text-xs text-gray-500 mt-1">
+                  {stats.approved_venues || 0} approved,{" "}
+                  {stats.pending_venues || 0} pending
+                </p>
               </div>
               <Building className="w-8 h-8 text-blue-600" />
             </div>
@@ -81,9 +133,12 @@ const OwnerDashboard = () => {
                   <Skeleton className="h-8 w-16" />
                 ) : (
                   <p className="text-2xl font-bold">
-                    {dashboard.totalBookings || 0}
+                    {stats.total_bookings || 0}
                   </p>
                 )}
+                <p className="text-xs text-gray-500 mt-1">
+                  {stats.confirmed_bookings || 0} confirmed
+                </p>
               </div>
               <Calendar className="w-8 h-8 text-green-600" />
             </div>
@@ -95,20 +150,18 @@ const OwnerDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">
-                  Active Courts
+                  Total Courts
                 </p>
-                {venuesLoading ? (
+                {dashboardLoading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
                   <p className="text-2xl font-bold">
-                    {venuesData?.reduce((total, venue) => {
-                      const venueWithCourts = venue as typeof venue & {
-                        courts?: Array<unknown>;
-                      };
-                      return total + (venueWithCourts.courts?.length || 0);
-                    }, 0) || 0}
+                    {stats.total_courts || 0}
                   </p>
                 )}
+                <p className="text-xs text-gray-500 mt-1">
+                  {stats.active_courts || 0} active
+                </p>
               </div>
               <div className="text-2xl">🏟️</div>
             </div>
@@ -120,15 +173,23 @@ const OwnerDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">
-                  Monthly Revenue
+                  Total Revenue
                 </p>
                 {dashboardLoading ? (
                   <Skeleton className="h-8 w-20" />
                 ) : (
                   <p className="text-2xl font-bold">
-                    ₹{(dashboard.monthlyRevenue || 42500).toLocaleString()}
+                    ₹
+                    {(
+                      stats.total_revenue ||
+                      revenue.total_revenue ||
+                      0
+                    ).toLocaleString()}
                   </p>
                 )}
+                <p className="text-xs text-gray-500 mt-1">
+                  Last {revenue.period || "30 days"}
+                </p>
               </div>
               <DollarSign className="w-8 h-8 text-purple-600" />
             </div>
@@ -188,24 +249,27 @@ const OwnerDashboard = () => {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Average Rating:</span>
+                  <span>Revenue This Month:</span>
                   <span className="font-medium">
-                    {dashboard.averageRating || "4.5"} ⭐
+                    ₹{(revenue.total_revenue || 42500).toLocaleString()}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Occupancy Rate:</span>
+                  <span>Active Venues:</span>
                   <span className="font-medium">
-                    {dashboard.occupancyRate || "78"}%
+                    {stats.approved_venues || 0}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Monthly Target:</span>
+                  <span>Booking Rate:</span>
                   <span className="font-medium text-green-600">
-                    {Math.round(
-                      ((dashboard.monthlyRevenue || 42500) / 50000) * 100
-                    )}
-                    % achieved
+                    {stats.total_bookings && stats.total_courts
+                      ? Math.round(
+                          (stats.confirmed_bookings / stats.total_bookings) *
+                            100
+                        )
+                      : 85}
+                    %
                   </span>
                 </div>
               </>
@@ -214,10 +278,15 @@ const OwnerDashboard = () => {
         </Card>
       </div>
 
-      {/* Recent Activity */}
+      {/* My Venues */}
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>My Venues</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>My Venues</CardTitle>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/owner/facility-management">Manage Venues</Link>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {venuesLoading ? (
@@ -246,31 +315,105 @@ const OwnerDashboard = () => {
                     <h4 className="font-medium">{venue.name}</h4>
                     <p className="text-sm text-gray-600">{venue.address}</p>
                     <p className="text-sm text-gray-500">
-                      {(venue as typeof venue & { courts?: Array<unknown> })
-                        .courts?.length || 0}{" "}
-                      courts •{" "}
-                      {(venue as typeof venue & { rating?: number }).rating ||
-                        "No rating"}{" "}
-                      ⭐
+                      {(venue as typeof venue & { courtsCount?: number })
+                        .courtsCount || 0}{" "}
+                      courts
                     </p>
                   </div>
                   <div className="text-right">
-                    <span
-                      className={`inline-flex px-2 py-1 text-xs rounded-full ${
-                        venue.isApproved
-                          ? "bg-green-100 text-green-800"
-                          : "bg-yellow-100 text-yellow-800"
-                      }`}
-                    >
+                    <Badge variant={venue.isApproved ? "default" : "secondary"}>
                       {venue.isApproved ? "Approved" : "Pending"}
-                    </span>
+                    </Badge>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
+              <Building className="w-12 h-12 mx-auto mb-4 text-gray-300" />
               <p>No venues found. Create your first venue to get started!</p>
+              <Button asChild className="mt-4">
+                <Link to="/owner/facility-management">Create Venue</Link>
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Recent Bookings */}
+      <Card className="mt-6">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Recent Bookings</CardTitle>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/owner/booking-overview">View All</Link>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {bookingsLoading || dashboardLoading ? (
+            <div className="space-y-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-4 border rounded-lg"
+                >
+                  <div className="space-y-2">
+                    <Skeleton className="h-5 w-32" />
+                    <Skeleton className="h-4 w-48" />
+                  </div>
+                  <Skeleton className="h-8 w-20" />
+                </div>
+              ))}
+            </div>
+          ) : displayBookings && displayBookings.length > 0 ? (
+            <div className="space-y-4">
+              {displayBookings.slice(0, 5).map((booking) => (
+                <div
+                  key={booking.id}
+                  className="flex items-center justify-between p-4 border rounded-lg"
+                >
+                  <div className="flex items-center gap-3">
+                    <Users className="w-8 h-8 text-gray-400" />
+                    <div>
+                      <h4 className="font-medium">
+                        {booking.user_name || "Unknown Customer"}
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        {booking.venue_name} • {booking.court_name}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {format(new Date(booking.bookingDate), "MMM dd, yyyy")}{" "}
+                        • {booking.startTime}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <Badge
+                      variant={
+                        booking.status === "confirmed"
+                          ? "default"
+                          : booking.status === "pending"
+                          ? "secondary"
+                          : "destructive"
+                      }
+                    >
+                      {booking.status}
+                    </Badge>
+                    <p className="text-sm font-medium mt-1">
+                      ₹{booking.totalAmount}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              <p>No recent bookings found.</p>
+              <p className="text-sm">
+                Bookings will appear here when customers make reservations.
+              </p>
             </div>
           )}
         </CardContent>

@@ -19,7 +19,7 @@ const Header = () => {
 
   const { user, isAuthenticated, logout: authLogout } = useAuth();
   const { data: unreadCount = 0 } = useUnreadNotificationCount({
-    enabled: false // Disabled for now
+    enabled: false, // Disabled for now
   });
   const logoutMutation = useLogout();
 
@@ -33,14 +33,14 @@ const Header = () => {
         // Even if server logout fails, clear local state
         authLogout();
         navigate("/");
-      }
+      },
     });
   };
 
   // Get the home URL based on user role
   const getHomeUrl = () => {
     if (!isAuthenticated || !user) return "/";
-    
+
     switch (user.role) {
       case "facility_owner":
         return "/owner/dashboard";
@@ -83,11 +83,11 @@ const Header = () => {
             ) : user.role === "admin" ? (
               <>
                 <Link
-                  to="/admin/venues"
+                  to="/admin/facilities"
                   className="text-foreground/60 hover:text-foreground transition-colors flex items-center space-x-2"
                 >
                   <Calendar className="h-4 w-4" />
-                  <span className="font-bold">Manage Venues</span>
+                  <span className="font-bold">Facilities</span>
                 </Link>
                 <Link
                   to="/admin/users"
@@ -95,6 +95,13 @@ const Header = () => {
                 >
                   <User className="h-4 w-4" />
                   <span className="font-bold">Users</span>
+                </Link>
+                <Link
+                  to="/admin/reports"
+                  className="text-foreground/60 hover:text-foreground transition-colors flex items-center space-x-2"
+                >
+                  <Bell className="h-4 w-4" />
+                  <span className="font-bold">Reports</span>
                 </Link>
               </>
             ) : (
@@ -124,7 +131,7 @@ const Header = () => {
           {isAuthenticated ? (
             <>
               {/* Notifications - Only for admin and facility owners */}
-              {(user?.role === 'admin' || user?.role === 'facility_owner') && (
+              {(user?.role === "admin" || user?.role === "facility_owner") && (
                 <Button variant="ghost" size="sm" className="relative" asChild>
                   <Link to="/notifications">
                     <Bell className="h-4 w-4" />
@@ -263,7 +270,8 @@ const Header = () => {
               {isAuthenticated ? (
                 <>
                   {/* Notifications - Only for admin and facility owners */}
-                  {(user?.role === 'admin' || user?.role === 'facility_owner') && (
+                  {(user?.role === "admin" ||
+                    user?.role === "facility_owner") && (
                     <Button
                       variant="ghost"
                       className="w-full justify-start"

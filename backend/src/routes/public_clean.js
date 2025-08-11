@@ -77,10 +77,7 @@ router.get('/sports', getAvailableSports);
 // Get sport pricing for specific venue and sport
 router.get(
   '/venues/:venueId/sports/:sportType/pricing',
-  [
-    param('venueId').isInt(),
-    param('sportType').isString().trim(),
-  ],
+  [param('venueId').isInt(), param('sportType').isString().trim()],
   getSportPricing
 );
 

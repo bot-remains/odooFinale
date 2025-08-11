@@ -4,6 +4,7 @@ import {
   AdminDashboardStats,
   BackendDashboardResponse,
   User,
+  UserRole,
   Venue,
   UserManagementParams,
   UserStatusUpdate,
@@ -11,6 +12,24 @@ import {
   SystemReport,
   RecentActivity,
 } from "@/lib/types";
+
+// API calls
+interface BackendUser {
+  id: number;
+  name: string;
+  email: string;
+  phone?: string;
+  role: string;
+  is_active: boolean;
+  is_verified: boolean;
+  last_login: string | null;
+  created_at: string;
+  updated_at?: string;
+  suspended_at: string | null;
+  suspension_reason: string | null;
+  venues_count: number;
+  bookings_count: number;
+}
 
 // API calls
 const adminApi = {
@@ -38,11 +57,33 @@ const adminApi = {
   getUsers: async (
     params: UserManagementParams = {}
   ): Promise<PaginatedResponse<User>> => {
-    const response = await api.get<ApiResponse<PaginatedResponse<User>>>(
-      "/admin/users",
-      { params }
-    );
-    return response.data.data!;
+    const response = await api.get<
+      ApiResponse<{
+        users: BackendUser[];
+        pagination: {
+          total: number;
+          limit: number;
+          offset: number;
+          hasNext: boolean;
+        };
+      }>
+    >("/admin/users", { params });
+
+    // Map backend response to frontend format
+    const backendData = response.data.data!;
+    return {
+      items: backendData.users.map((user: BackendUser) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || "",
+        role: user.role as UserRole,
+        isActive: user.is_active,
+        createdAt: user.created_at,
+        updatedAt: user.updated_at,
+      })),
+      pagination: backendData.pagination,
+    };
   },
 
   getUserById: async (userId: number): Promise<User> => {
@@ -148,7 +189,44 @@ const adminApi = {
     );
     return response.data.data!;
   },
+
+  getChartData: async (
+    type: "monthly" | "sports" | "venues" = "monthly"
+  ): Promise<ChartData> => {
+    const response = await api.get<ApiResponse<ChartData>>(
+      "/admin/chart-data",
+      { params: { type } }
+    );
+    return response.data.data!;
+  },
 };
+
+// Chart data interfaces
+export interface MonthlyGrowthData {
+  month: string;
+  users: number;
+  venues: number;
+  bookings: number;
+  revenue: number;
+}
+
+export interface SportPopularityData {
+  sport: string;
+  bookings: number;
+  color: string;
+}
+
+export interface VenueStatusData {
+  name: string;
+  value: number;
+  color: string;
+}
+
+export interface ChartData {
+  monthlyGrowth?: MonthlyGrowthData[];
+  sportPopularity?: SportPopularityData[];
+  venueStatus?: VenueStatusData[];
+}
 
 // React Query hooks
 export const useAdminDashboard = () => {
@@ -221,6 +299,17 @@ export const useReportsData = (
     queryFn: () => adminApi.getReportsData(type),
     enabled: !!type,
     staleTime: 5 * 60 * 1000,
+  });
+};
+
+export const useAdminChartData = (
+  type: "monthly" | "sports" | "venues" = "monthly"
+) => {
+  return useQuery({
+    queryKey: ["admin", "chartData", type],
+    queryFn: () => adminApi.getChartData(type),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnWindowFocus: false,
   });
 };
 

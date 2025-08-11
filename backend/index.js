@@ -144,16 +144,8 @@ const startServer = async () => {
       console.log('⚠️ Email service will be tested when first used');
     }
 
-    // Create tables if they don't exist (basic setup)
-    await User.createTable();
-    await Venue.createTable();
-    await Court.createTable();
-    await Booking.createTable();
-    await Review.createTable();
-    // await TimeSlot.createTable(); // Temporarily disabled due to column date error
-
-    // Initialize new tables for extended functionality
-    await initializeNewTables();
+    // Prisma handles table creation via migrations
+    console.log('✅ Database schema ready (managed by Prisma)');
 
     // Start server
     app.listen(PORT, HOST, () => {

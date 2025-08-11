@@ -29,6 +29,7 @@ import EditVenue from "./pages/owner/EditVenue";
 import VenueBookings from "./pages/owner/VenueBookings";
 import AdminDashboard from "./pages/admin/Dashboard";
 import FacilityApproval from "./pages/admin/FacilityApproval";
+import Users from "./pages/admin/Users";
 import ReportsModeration from "./pages/admin/ReportsModeration";
 import AdminProfile from "./pages/admin/Profile";
 import FacilityProvider from "./pages/FacilityProvider";
@@ -68,43 +69,176 @@ const App = () => (
               <Route path="/reset-password" element={<ResetPassword />} />
 
               {/* With Layout */}
-              <Route path="/*" element={
-                <Layout>
-                  <Routes>
-                    <Route path="/" element={<Index />} />
-                    <Route path="/venues" element={<Venues />} />
-                    <Route path="/venue/:id" element={<VenueDetails />} />
-                    <Route path="/booking/:venueId" element={<BookingPage />} />
-                    
-                    <Route path="/facility-provider" element={<RedirectRoute from="/facility-provider" to="/admin/facility-provider" />} />
+              <Route
+                path="/*"
+                element={
+                  <Layout>
+                    <Routes>
+                      <Route path="/" element={<Index />} />
+                      <Route path="/venues" element={<Venues />} />
+                      <Route path="/venue/:id" element={<VenueDetails />} />
+                      <Route
+                        path="/booking/:venueId"
+                        element={<BookingPage />}
+                      />
 
-                    {/* User */}
-                    <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
-                    <Route path="/bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />
+                      <Route
+                        path="/facility-provider"
+                        element={
+                          <RedirectRoute
+                            from="/facility-provider"
+                            to="/admin/facility-provider"
+                          />
+                        }
+                      />
 
-                    {/* Owner */}
-                    <Route path="/owner/dashboard" element={<ProtectedRoute><OwnerDashboard /></ProtectedRoute>} />
-                    <Route path="/owner/venues" element={<ProtectedRoute><OwnerVenues /></ProtectedRoute>} />
-                    <Route path="/owner/venues/create" element={<ProtectedRoute><CreateVenue /></ProtectedRoute>} />
-                    <Route path="/owner/venues/:venueId" element={<ProtectedRoute><OwnerVenueDetails /></ProtectedRoute>} />
-                    <Route path="/owner/venues/:venueId/edit" element={<ProtectedRoute><EditVenue /></ProtectedRoute>} />
-                    <Route path="/owner/venues/:venueId/bookings" element={<ProtectedRoute><VenueBookings /></ProtectedRoute>} />
-                    <Route path="/owner/facility" element={<ProtectedRoute><FacilityManagement /></ProtectedRoute>} />
-                    <Route path="/owner/timeslots" element={<ProtectedRoute><TimeSlots /></ProtectedRoute>} />
-                    <Route path="/owner/bookings" element={<ProtectedRoute><BookingOverview /></ProtectedRoute>} />
+                      {/* User */}
+                      <Route
+                        path="/profile"
+                        element={
+                          <ProtectedRoute>
+                            <UserProfile />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/bookings"
+                        element={
+                          <ProtectedRoute>
+                            <MyBookings />
+                          </ProtectedRoute>
+                        }
+                      />
 
-                    {/* Admin */}
-                    <Route path="/admin/dashboard" element={<ProtectedRoute requireAdmin={true}><AdminDashboard /></ProtectedRoute>} />
-                    <Route path="/admin/facilities" element={<ProtectedRoute requireAdmin={true}><FacilityApproval /></ProtectedRoute>} />
+                      {/* Owner */}
+                      <Route
+                        path="/owner/dashboard"
+                        element={
+                          <ProtectedRoute>
+                            <OwnerDashboard />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/owner/venues"
+                        element={
+                          <ProtectedRoute>
+                            <OwnerVenues />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/owner/venues/create"
+                        element={
+                          <ProtectedRoute>
+                            <CreateVenue />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/owner/venues/:venueId"
+                        element={
+                          <ProtectedRoute>
+                            <OwnerVenueDetails />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/owner/venues/:venueId/edit"
+                        element={
+                          <ProtectedRoute>
+                            <EditVenue />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/owner/venues/:venueId/bookings"
+                        element={
+                          <ProtectedRoute>
+                            <VenueBookings />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/owner/facility"
+                        element={
+                          <ProtectedRoute>
+                            <FacilityManagement />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/owner/timeslots"
+                        element={
+                          <ProtectedRoute>
+                            <TimeSlots />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/owner/bookings"
+                        element={
+                          <ProtectedRoute>
+                            <BookingOverview />
+                          </ProtectedRoute>
+                        }
+                      />
 
-                    <Route path="/admin/reports" element={<ProtectedRoute requireAdmin={true}><ReportsModeration /></ProtectedRoute>} />
-                    <Route path="/admin/profile" element={<ProtectedRoute requireAdmin={true}><AdminProfile /></ProtectedRoute>} />
-                    <Route path="/admin/facility-provider" element={<ProtectedRoute requireAdmin={true}><FacilityProvider /></ProtectedRoute>} />
+                      {/* Admin */}
+                      <Route
+                        path="/admin/dashboard"
+                        element={
+                          <ProtectedRoute requireAdmin={true}>
+                            <AdminDashboard />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/admin/users"
+                        element={
+                          <ProtectedRoute requireAdmin={true}>
+                            <Users />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/admin/facilities"
+                        element={
+                          <ProtectedRoute requireAdmin={true}>
+                            <FacilityApproval />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/admin/reports"
+                        element={
+                          <ProtectedRoute requireAdmin={true}>
+                            <ReportsModeration />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/admin/profile"
+                        element={
+                          <ProtectedRoute requireAdmin={true}>
+                            <AdminProfile />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/admin/facility-provider"
+                        element={
+                          <ProtectedRoute requireAdmin={true}>
+                            <FacilityProvider />
+                          </ProtectedRoute>
+                        }
+                      />
 
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </Layout>
-              } />
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </Layout>
+                }
+              />
             </Routes>
           </BrowserRouter>
         </TooltipProvider>

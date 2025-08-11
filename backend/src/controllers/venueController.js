@@ -187,19 +187,70 @@ export const getDashboard = async (req, res) => {
 export const getVenues = async (req, res) => {
   try {
     const ownerId = req.user.userId || req.user.id;
-    const venues = await Venue.findByOwner(ownerId);
 
-    // Get courts count for each venue
-    const venuesWithCourts = await Promise.all(
-      venues.map(async (venue) => {
-        const courts = await Court.findByVenue(venue.id);
-        return {
-          ...venue.toJSON(),
-          courtsCount: courts.length,
-          courts: courts.map((court) => court.toJSON()),
-        };
-      })
-    );
+    // Use Prisma directly to avoid model conversion issues
+    const venues = await prisma.venue.findMany({
+      where: {
+        ownerId: ownerId,
+      },
+      include: {
+        courts: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+        _count: {
+          select: {
+            courts: true,
+            bookings: true,
+            reviews: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    // Transform the data to include court counts and format properly
+    const venuesWithCourts = venues.map((venue) => ({
+      id: venue.id,
+      name: venue.name,
+      description: venue.description,
+      address: venue.address,
+      location: venue.location,
+      amenities: venue.amenities || [],
+      photos: venue.photos || [],
+      rating: parseFloat(venue.rating) || 0,
+      totalReviews: venue.totalReviews || 0,
+      ownerId: venue.ownerId,
+      isApproved: venue.isApproved,
+      contactEmail: venue.contactEmail,
+      contactPhone: venue.contactPhone,
+      approvedBy: venue.approvedBy,
+      approvedAt: venue.approvedAt,
+      rejectedBy: venue.rejectedBy,
+      rejectedAt: venue.rejectedAt,
+      rejectionReason: venue.rejectionReason,
+      createdAt: venue.createdAt,
+      updatedAt: venue.updatedAt,
+      courtsCount: venue._count.courts,
+      bookingsCount: venue._count.bookings,
+      reviewsCount: venue._count.reviews,
+      courts: venue.courts.map((court) => ({
+        id: court.id,
+        venueId: court.venueId,
+        name: court.name,
+        sportType: court.sportType,
+        pricePerHour: parseFloat(court.pricePerHour) || 0,
+        description: court.description,
+        photos: court.photos || [],
+        amenities: court.amenities || [],
+        isActive: court.isActive,
+        createdAt: court.createdAt,
+        updatedAt: court.updatedAt,
+      })),
+    }));
 
     res.json({
       success: true,
@@ -220,7 +271,7 @@ export const createVenue = async (req, res) => {
   try {
     console.log('🔍 Create venue request body:', JSON.stringify(req.body, null, 2));
     console.log('🔍 User object:', JSON.stringify(req.user, null, 2));
-    
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       console.log('❌ Validation errors:', errors.array());
@@ -233,13 +284,28 @@ export const createVenue = async (req, res) => {
 
     const { courts, ...venueFields } = req.body;
 
+    // Prepare venue data
     const venueData = {
-      ...venueFields,
+      name: venueFields.name,
+      description: venueFields.description || null,
+      address: venueFields.address,
+      location: venueFields.location,
+      amenities: Array.isArray(venueFields.amenities) ? venueFields.amenities : [],
+      photos: Array.isArray(venueFields.photos) ? venueFields.photos : [],
+      contactEmail: venueFields.contactEmail || null,
+      contactPhone: venueFields.contactPhone || null,
       ownerId: req.user.userId || req.user.id,
+      isApproved: false, // New venues need approval
     };
 
-    // Create venue first
-    const venue = await Venue.create(venueData);
+    console.log('🔍 Creating venue with data:', JSON.stringify(venueData, null, 2));
+
+    // Create venue first using Prisma
+    const venue = await prisma.venue.create({
+      data: venueData,
+    });
+
+    console.log('✅ Venue created successfully:', venue.id);
 
     let createdCourts = [];
 
@@ -255,41 +321,75 @@ export const createVenue = async (req, res) => {
           if (court.pricePerHour <= 0) {
             throw new Error(`Court ${i + 1}: pricePerHour must be greater than 0`);
           }
-          if (court.capacity && court.capacity <= 0) {
-            throw new Error(`Court ${i + 1}: capacity must be greater than 0`);
-          }
         }
 
-        // Create courts for the venue
+        // Create courts for the venue using Prisma
         for (const courtData of courts) {
           console.log('🔍 Creating court with data:', JSON.stringify(courtData, null, 2));
-          const court = await Court.create({
-            ...courtData,
-            venueId: venue.id,
-          });
-          createdCourts.push(court.toJSON());
-        }
-      } catch (courtError) {
-        // If court creation fails, we could either:
-        // 1. Delete the venue and return error (transaction-like behavior)
-        // 2. Keep the venue and return partial success
-        // For now, we'll keep the venue and log the error
-        console.error('Court creation error:', courtError.message);
 
-        res.status(201).json({
+          const courtCreateData = {
+            venueId: venue.id, // Use the created venue's ID
+            name: courtData.name,
+            sportType: courtData.sportType,
+            pricePerHour: parseFloat(courtData.pricePerHour),
+            description: courtData.description || null,
+            photos: courtData.photos || [],
+            amenities: courtData.amenities || [],
+            isActive: true,
+          };
+
+          const court = await prisma.court.create({
+            data: courtCreateData,
+          });
+
+          createdCourts.push({
+            id: court.id,
+            venueId: court.venueId,
+            name: court.name,
+            sportType: court.sportType,
+            pricePerHour: parseFloat(court.pricePerHour),
+            description: court.description,
+            photos: court.photos || [],
+            amenities: court.amenities || [],
+            isActive: court.isActive,
+            createdAt: court.createdAt,
+            updatedAt: court.updatedAt,
+          });
+        }
+
+        console.log('✅ Created', createdCourts.length, 'courts for venue');
+      } catch (courtError) {
+        console.error('❌ Court creation error:', courtError.message);
+
+        // Return success for venue but note court creation issues
+        return res.status(201).json({
           success: true,
           message:
             'Venue created successfully. Awaiting admin approval. Some courts could not be created.',
           data: {
-            venue: venue.toJSON(),
+            venue: {
+              id: venue.id,
+              name: venue.name,
+              description: venue.description,
+              address: venue.address,
+              location: venue.location,
+              amenities: venue.amenities || [],
+              photos: venue.photos || [],
+              contactEmail: venue.contactEmail,
+              contactPhone: venue.contactPhone,
+              isApproved: venue.isApproved,
+              ownerId: venue.ownerId,
+              createdAt: venue.createdAt,
+              updatedAt: venue.updatedAt,
+            },
             courts: createdCourts,
             courtErrors: courtError.message,
           },
         });
-        return;
       }
     }
 
+    // Return success response
     res.status(201).json({
       success: true,
       message:
@@ -297,7 +397,21 @@ export const createVenue = async (req, res) => {
           ? `Venue created successfully with ${createdCourts.length} courts. Awaiting admin approval.`
           : 'Venue created successfully. Awaiting admin approval.',
       data: {
-        venue: venue.toJSON(),
+        venue: {
+          id: venue.id,
+          name: venue.name,
+          description: venue.description,
+          address: venue.address,
+          location: venue.location,
+          amenities: venue.amenities || [],
+          photos: venue.photos || [],
+          contactEmail: venue.contactEmail,
+          contactPhone: venue.contactPhone,
+          isApproved: venue.isApproved,
+          ownerId: venue.ownerId,
+          createdAt: venue.createdAt,
+          updatedAt: venue.updatedAt,
+        },
         courts: createdCourts,
       },
     });
