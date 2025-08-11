@@ -17,11 +17,16 @@ import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
 import UserProfile from "./pages/user/Profile";
 import MyBookings from "./pages/user/MyBookings";
-import CourtBooking from "./pages/booking/CourtBooking";
+import BookingPage from "./pages/booking/BookingPage.tsx";
 import OwnerDashboard from "./pages/owner/Dashboard";
 import FacilityManagement from "./pages/owner/FacilityManagement";
 import TimeSlots from "./pages/owner/TimeSlots";
 import BookingOverview from "./pages/owner/BookingOverview";
+import OwnerVenues from "./pages/owner/OwnerVenues";
+import CreateVenue from "./pages/owner/CreateVenue";
+import OwnerVenueDetails from "./pages/owner/VenueDetails";
+import EditVenue from "./pages/owner/EditVenue";
+import VenueBookings from "./pages/owner/VenueBookings";
 import AdminDashboard from "./pages/admin/Dashboard";
 import FacilityApproval from "./pages/admin/FacilityApproval";
 import ReportsModeration from "./pages/admin/ReportsModeration";
@@ -69,7 +74,7 @@ const App = () => (
                     <Route path="/" element={<Index />} />
                     <Route path="/venues" element={<Venues />} />
                     <Route path="/venue/:id" element={<VenueDetails />} />
-                    <Route path="/booking/:venueId" element={<CourtBooking />} />
+                    <Route path="/booking/:venueId" element={<BookingPage />} />
                     
                     <Route path="/facility-provider" element={<RedirectRoute from="/facility-provider" to="/admin/facility-provider" />} />
 
@@ -79,6 +84,11 @@ const App = () => (
 
                     {/* Owner */}
                     <Route path="/owner/dashboard" element={<ProtectedRoute><OwnerDashboard /></ProtectedRoute>} />
+                    <Route path="/owner/venues" element={<ProtectedRoute><OwnerVenues /></ProtectedRoute>} />
+                    <Route path="/owner/venues/create" element={<ProtectedRoute><CreateVenue /></ProtectedRoute>} />
+                    <Route path="/owner/venues/:venueId" element={<ProtectedRoute><OwnerVenueDetails /></ProtectedRoute>} />
+                    <Route path="/owner/venues/:venueId/edit" element={<ProtectedRoute><EditVenue /></ProtectedRoute>} />
+                    <Route path="/owner/venues/:venueId/bookings" element={<ProtectedRoute><VenueBookings /></ProtectedRoute>} />
                     <Route path="/owner/facility" element={<ProtectedRoute><FacilityManagement /></ProtectedRoute>} />
                     <Route path="/owner/timeslots" element={<ProtectedRoute><TimeSlots /></ProtectedRoute>} />
                     <Route path="/owner/bookings" element={<ProtectedRoute><BookingOverview /></ProtectedRoute>} />

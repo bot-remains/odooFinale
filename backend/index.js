@@ -64,7 +64,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/notifications', notificationRoutes);
+// app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
 
 // Health check endpoint
@@ -153,7 +153,7 @@ const startServer = async () => {
     await Court.createTable();
     await Booking.createTable();
     await Review.createTable();
-    await TimeSlot.createTable();
+    // await TimeSlot.createTable(); // Temporarily disabled due to column date error
 
     // Initialize new tables for extended functionality
     await initializeNewTables();

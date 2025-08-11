@@ -73,6 +73,13 @@ const publicVenueApi = {
     const response = await api.get<ApiResponse<Sport[]>>("/public/sports");
     return response.data.data!;
   },
+
+  getSportPricing: async (venueId: number, sportType: string) => {
+    const response = await api.get<ApiResponse<any>>(
+      `/public/venues/${venueId}/sports/${encodeURIComponent(sportType)}/pricing`
+    );
+    return response.data.data!;
+  },
 };
 
 // Venue Management API calls (for owners)
@@ -218,6 +225,15 @@ export const useSports = () => {
     queryKey: ["sports"],
     queryFn: publicVenueApi.getSports,
     staleTime: 60 * 60 * 1000, // 1 hour
+  });
+};
+
+export const useSportPricing = (venueId: number, sportType: string) => {
+  return useQuery({
+    queryKey: ["venues", venueId, "sports", sportType, "pricing"],
+    queryFn: () => publicVenueApi.getSportPricing(venueId, sportType),
+    enabled: !!venueId && !!sportType,
+    staleTime: 10 * 60 * 1000, // 10 minutes
   });
 };
 

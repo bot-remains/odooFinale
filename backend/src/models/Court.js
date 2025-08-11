@@ -60,7 +60,15 @@ class Court {
 
   // Create a new court
   static async create(courtData) {
-    const { venueId, name, sportType, pricePerHour, operatingHours } = courtData;
+    const { 
+      venueId, 
+      name, 
+      sportType, 
+      pricePerHour, 
+      operatingHours,
+      maxPlayers,
+      description 
+    } = courtData;
 
     const insertQuery = `
       INSERT INTO courts (venue_id, name, sport_type, price_per_hour, operating_hours)
@@ -68,12 +76,17 @@ class Court {
       RETURNING *
     `;
 
+    // Format operating hours for database
+    const formattedOperatingHours = typeof operatingHours === 'object' 
+      ? JSON.stringify(operatingHours)
+      : operatingHours;
+
     const result = await query(insertQuery, [
       venueId,
       name,
       sportType,
       pricePerHour,
-      operatingHours,
+      formattedOperatingHours,
     ]);
     return new Court(result.rows[0]);
   }

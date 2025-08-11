@@ -37,64 +37,6 @@ interface ExtendedAdminStats extends AdminDashboardStats {
 }
 import { useToast } from "@/hooks/use-toast";
 
-const bookingData = [
-  { name: "Jan", bookings: 120, revenue: 58000, users: 45 },
-  { name: "Feb", bookings: 150, revenue: 72000, users: 62 },
-  { name: "Mar", bookings: 180, revenue: 89000, users: 70 },
-  { name: "Apr", bookings: 210, revenue: 105000, users: 85 },
-  { name: "May", bookings: 240, revenue: 125000, users: 98 },
-  { name: "Jun", bookings: 280, revenue: 142000, users: 112 },
-  { name: "Jul", bookings: 320, revenue: 165000, users: 128 },
-  { name: "Aug", bookings: 295, revenue: 152000, users: 135 },
-];
-
-const sportData = [
-  { name: "Badminton", bookings: 450, color: "#8884d8" },
-  { name: "Tennis", bookings: 320, color: "#82ca9d" },
-  { name: "Football", bookings: 280, color: "#ffc658" },
-  { name: "Cricket", bookings: 220, color: "#ff7300" },
-  { name: "Hockey", bookings: 150, color: "#00ff00" },
-  { name: "Others", bookings: 100, color: "#ff0000" },
-];
-
-const recentActivities = [
-  {
-    id: 1,
-    type: "user_joined",
-    user: "John Doe",
-    time: "2 hours ago",
-    icon: "👤",
-  },
-  {
-    id: 2,
-    type: "venue_approved",
-    venue: "Elite Sports Hub",
-    time: "4 hours ago",
-    icon: "✅",
-  },
-  {
-    id: 3,
-    type: "report_submitted",
-    issue: "Safety concern at City Arena",
-    time: "6 hours ago",
-    icon: "🚨",
-  },
-  {
-    id: 4,
-    type: "booking_cancelled",
-    venue: "Tennis Pro Center",
-    time: "8 hours ago",
-    icon: "❌",
-  },
-  {
-    id: 5,
-    type: "new_venue",
-    venue: "Champions Hockey Arena",
-    time: "1 day ago",
-    icon: "🏟️",
-  },
-];
-
 const AdminDashboard = () => {
   const { toast } = useToast();
   const { data: dashboardData, isLoading, error } = useAdminDashboard();

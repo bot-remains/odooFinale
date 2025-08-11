@@ -7,8 +7,8 @@ class Venue {
     this.description = venueData.description;
     this.address = venueData.address;
     this.location = venueData.location;
-    this.amenities = venueData.amenities;
-    this.photos = venueData.photos;
+    this.amenities = Array.isArray(venueData.amenities) ? venueData.amenities : (venueData.amenities ? JSON.parse(venueData.amenities) : []);
+    this.photos = Array.isArray(venueData.photos) ? venueData.photos : (venueData.photos ? JSON.parse(venueData.photos) : []);
     this.rating = venueData.rating;
     this.totalReviews = venueData.total_reviews;
     this.ownerId = venueData.owner_id;
@@ -33,15 +33,48 @@ class Venue {
         description TEXT,
         address TEXT NOT NULL,
         location VARCHAR(255) NOT NULL,
-        amenities TEXT[], -- Array of amenities
-        photos TEXT[], -- Array of photo URLs
+        amenities JSONB DEFAULT '[]', -- JSONB array of amenities
+        photos JSONB DEFAULT '[]', -- JSONB array of photo URLs
+        contact_phone VARCHAR(20),
+        contact_email VARCHAR(255),
         rating DECIMAL(2,1) DEFAULT 0.0,
         total_reviews INTEGER DEFAULT 0,
         owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         is_approved BOOLEAN DEFAULT false,
+        rejection_reason TEXT,
+        rejected_at TIMESTAMP,
+        rejected_by INTEGER REFERENCES users(id),
+        approved_at TIMESTAMP,
+        approved_by INTEGER REFERENCES users(id),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- Add contact columns if they don't exist
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='contact_phone') THEN
+          ALTER TABLE venues ADD COLUMN contact_phone VARCHAR(20);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='contact_email') THEN
+          ALTER TABLE venues ADD COLUMN contact_email VARCHAR(255);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='rejection_reason') THEN
+          ALTER TABLE venues ADD COLUMN rejection_reason TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='rejected_at') THEN
+          ALTER TABLE venues ADD COLUMN rejected_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='rejected_by') THEN
+          ALTER TABLE venues ADD COLUMN rejected_by INTEGER REFERENCES users(id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='approved_at') THEN
+          ALTER TABLE venues ADD COLUMN approved_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='approved_by') THEN
+          ALTER TABLE venues ADD COLUMN approved_by INTEGER REFERENCES users(id);
+        END IF;
+      END $$;
 
       -- Create indexes
       CREATE INDEX IF NOT EXISTS idx_venues_owner_id ON venues(owner_id);
@@ -63,6 +96,38 @@ class Venue {
           BEFORE UPDATE ON venues
           FOR EACH ROW
           EXECUTE FUNCTION update_venues_updated_at();
+
+      -- Migrate existing TEXT[] columns to JSONB
+      DO $$ 
+      BEGIN
+        -- Check if amenities is TEXT[] and convert to JSONB
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='venues' AND column_name='amenities' AND data_type='ARRAY'
+        ) THEN
+          ALTER TABLE venues ALTER COLUMN amenities TYPE JSONB USING 
+            CASE 
+              WHEN amenities IS NULL THEN '[]'::jsonb
+              ELSE array_to_json(amenities)::jsonb
+            END;
+        END IF;
+
+        -- Check if photos is TEXT[] and convert to JSONB
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='venues' AND column_name='photos' AND data_type='ARRAY'
+        ) THEN
+          ALTER TABLE venues ALTER COLUMN photos TYPE JSONB USING 
+            CASE 
+              WHEN photos IS NULL THEN '[]'::jsonb
+              ELSE array_to_json(photos)::jsonb
+            END;
+        END IF;
+
+        -- Ensure updated_at has a default value
+        ALTER TABLE venues ALTER COLUMN updated_at SET DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE venues ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP;
+      END $$;
     `;
 
     try {
@@ -83,12 +148,14 @@ class Venue {
       location,
       amenities = [],
       photos = [],
+      contactPhone,
+      contactEmail,
       ownerId,
     } = venueData;
 
     const insertQuery = `
-      INSERT INTO venues (name, description, address, location, amenities, photos, owner_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO venues (name, description, address, location, amenities, photos, contact_phone, contact_email, owner_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
 
@@ -97,8 +164,10 @@ class Venue {
       description,
       address,
       location,
-      amenities,
-      photos,
+      JSON.stringify(amenities || []),  // Convert to JSON string for JSONB column
+      JSON.stringify(photos || []),     // Convert to JSON string for JSONB column
+      contactPhone,
+      contactEmail,
       ownerId,
     ]);
     return new Venue(result.rows[0]);

@@ -2,6 +2,22 @@ import Venue from '../models/Venue.js';
 import Court from '../models/Court.js';
 import { validationResult } from 'express-validator';
 
+// Helper function to get sport description
+const getSportDescription = (sportName) => {
+  const sport = sportName.toLowerCase();
+  switch (sport) {
+    case 'badminton': return 'Indoor racquet sport with shuttlecock';
+    case 'tennis': return 'Racquet sport on court';
+    case 'football': return 'Team sport played with feet';
+    case 'cricket': return 'Bat and ball sport with wickets';
+    case 'swimming': return 'Aquatic sport and exercise';
+    case 'table tennis': return 'Indoor paddle sport';
+    case 'basketball': return 'Team sport with hoops';
+    case 'volleyball': return 'Team sport with net';
+    default: return 'Popular sport activity';
+  }
+};
+
 // Get all approved venues with search and filters
 export const getAllVenues = async (req, res) => {
   try {
@@ -162,7 +178,7 @@ export const getAllVenues = async (req, res) => {
     res.json({
       success: true,
       data: {
-        venues: result.rows,
+        items: result.rows,
         pagination: {
           total: parseInt(countResult.rows[0].total),
           limit: parseInt(limit),
@@ -445,7 +461,8 @@ export const getAvailableSports = async (req, res) => {
 
     const sportsQuery = `
       SELECT
-        c.sport_type,
+        c.sport_type as name,
+        c.sport_type as id,
         COUNT(DISTINCT c.id) as courts_count,
         COUNT(DISTINCT v.id) as venues_count,
         AVG(c.price_per_hour) as avg_price,
@@ -460,15 +477,107 @@ export const getAvailableSports = async (req, res) => {
 
     const result = await query(sportsQuery);
 
+    // Add descriptions for sports
+    const sportsWithDescriptions = result.rows.map(sport => ({
+      ...sport,
+      description: getSportDescription(sport.name)
+    }));
+
     res.json({
       success: true,
-      data: result.rows,
+      data: sportsWithDescriptions,
     });
   } catch (error) {
     console.error('Get available sports error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch available sports',
+      error: error.message,
+    });
+  }
+};
+
+// Get sport pricing details by venue and sport
+export const getSportPricing = async (req, res) => {
+  try {
+    const { venueId, sportType } = req.params;
+
+    const { query } = await import('../config/database.js');
+
+    // Get court pricing information for the specific venue and sport
+    const pricingQuery = `
+      SELECT 
+        c.*,
+        v.name as venue_name,
+        v.operating_hours as venue_operating_hours
+      FROM courts c
+      JOIN venues v ON c.venue_id = v.id
+      WHERE c.venue_id = $1 
+        AND LOWER(c.sport_type) = LOWER($2)
+        AND c.is_active = true
+        AND v.is_approved = true
+      ORDER BY c.price_per_hour ASC
+      LIMIT 1
+    `;
+
+    const result = await query(pricingQuery, [venueId, sportType]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Sport not available at this venue',
+      });
+    }
+
+    const court = result.rows[0];
+    const basePrice = parseFloat(court.price_per_hour);
+
+    // Create pricing structure with different time slots
+    // This is a simplified version - in real app, you might have a separate pricing table
+    const pricingData = {
+      name: `${sportType} Premium`,
+      sportType: sportType,
+      venueId: parseInt(venueId),
+      venueName: court.venue_name,
+      courtName: court.name,
+      weekdays: {
+        morning: {
+          time: "06:00 AM - 12:00 PM",
+          price: Math.round(basePrice * 0.8), // 20% discount for morning
+        },
+        afternoon: {
+          time: "12:00 PM - 05:00 PM", 
+          price: basePrice,
+        },
+        evening: {
+          time: "05:00 PM - 10:00 PM",
+          price: Math.round(basePrice * 1.2), // 20% premium for evening
+        }
+      },
+      weekend: {
+        allDay: {
+          time: "06:00 AM - 10:00 PM",
+          price: Math.round(basePrice * 1.3), // 30% premium for weekends
+        }
+      },
+      holiday: {
+        allDay: {
+          time: "06:00 AM - 10:00 PM", 
+          price: Math.round(basePrice * 1.4), // 40% premium for holidays
+        }
+      },
+      operatingHours: court.operating_hours || court.venue_operating_hours
+    };
+
+    res.json({
+      success: true,
+      data: pricingData,
+    });
+  } catch (error) {
+    console.error('Get sport pricing error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch sport pricing',
       error: error.message,
     });
   }

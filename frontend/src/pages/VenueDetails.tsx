@@ -1,14 +1,20 @@
-import { useParams, Link } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
 import SEO from "@/components/SEO";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { 
   MapPin, 
   Star, 
@@ -24,16 +30,18 @@ import {
   Users, 
   Calendar,
   MapIcon,
-  StarIcon,
   MessageSquare,
-  ThumbsUp,
-  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
   Camera,
   Navigation,
-  ExternalLink
+  ExternalLink,
+  Play,
+  Image as ImageIcon,
+  X
 } from "lucide-react";
-import { useVenueDetails } from "@/services/venueService";
+import { useVenueDetails, useSportPricing } from "@/services/venueService";
 import { useVenueReviews, useCreateReview } from "@/services/reviewService";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -44,43 +52,46 @@ const VenueDetails = () => {
   const venueId = parseInt(id || "0");
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   
-  // State for reviews and reporting
+  // State management
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showAllReviews, setShowAllReviews] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
-  const [showReportForm, setShowReportForm] = useState(false);
-  const [reviewData, setReviewData] = useState({
-    rating: 5,
-    comment: "",
-    bookingId: 0,
-    courtId: 0
-  });
-  const [reportData, setReportData] = useState({
-    reason: "",
-    description: ""
-  });
-
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [selectedSport, setSelectedSport] = useState<string | null>(null);
+  const [showSportModal, setShowSportModal] = useState(false);
+  
   // API calls
   const { data: venue, isLoading: venueLoading, error: venueError } = useVenueDetails(venueId);
-  const { data: reviewsData, isLoading: reviewsLoading, error: reviewsError } = useVenueReviews(venueId);
+  const { data: reviewsData, isLoading: reviewsLoading } = useVenueReviews(venueId);
+  const { data: sportPricing, isLoading: pricingLoading } = useSportPricing(
+    venueId, 
+    selectedSport || ""
+  );
   const createReviewMutation = useCreateReview();
 
-  // Only use real API data - no fallback data
-  const displayVenue = venue ? {
-    ...venue,
-    sports: venue.available_sports || [],
-    price: venue.min_price || 0,
-    phone: venue.contactPhone || null,
-    email: venue.contactEmail || null,
-    address: venue.address || null,
-    timings: venue.operatingHours ? "Variable hours" : null,
-    photos: [], // Only use real photos when available in API
-    coordinates: null, // Only use real coordinates when available in API
-    totalReviews: venue.totalReviews || 0,
-    facilities: (venue.amenities || []).map(name => ({ name, icon: Shield }))
-  } : null;
-
-  // Only use real reviews from API
   const reviews = reviewsData?.items || [];
+  const displayedReviews = showAllReviews ? reviews : reviews.slice(0, 5);
+
+  const handleSportClick = (sport: string) => {
+    setSelectedSport(sport.toLowerCase());
+    setShowSportModal(true);
+  };
+
+  const handleBookVenue = () => {
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please login to book a venue",
+        variant: "destructive"
+      });
+      return;
+    }
+    // Navigate to booking page with venue ID
+    navigate(`/booking/${venueId}`);
+  };
 
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,10 +107,9 @@ const VenueDetails = () => {
     try {
       await createReviewMutation.mutateAsync({
         venueId,
-        rating: reviewData.rating,
-        comment: reviewData.comment,
-        bookingId: reviewData.bookingId,
-        courtId: reviewData.courtId
+        rating: reviewRating,
+        comment: reviewComment,
+        bookingId: 1 // You may need to get this from somewhere
       });
       
       toast({
@@ -108,7 +118,8 @@ const VenueDetails = () => {
       });
       
       setShowReviewForm(false);
-      setReviewData({ rating: 5, comment: "", bookingId: 0, courtId: 0 });
+      setReviewComment("");
+      setReviewRating(5);
     } catch (error) {
       toast({
         title: "Error",
@@ -118,524 +129,543 @@ const VenueDetails = () => {
     }
   };
 
-  const handleReportSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) {
-      toast({
-        title: "Login Required",
-        description: "Please login to report this venue",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Here you would implement the report API call
-    toast({
-      title: "Report Submitted",
-      description: "Thank you for reporting. We'll review this venue."
-    });
-    
-    setShowReportForm(false);
-    setReportData({ reason: "", description: "" });
-  };
-
-  const renderStars = (rating: number, size = "small") => {
-    const sizeClass = size === "large" ? "w-6 h-6" : "w-4 h-4";
+  const renderStars = (rating: number, interactive = false, onRatingChange?: (rating: number) => void) => {
     return (
       <div className="flex items-center gap-1">
         {[1, 2, 3, 4, 5].map((star) => (
-          <StarIcon
+          <Star
             key={star}
-            className={`${sizeClass} ${
+            className={`w-5 h-5 ${
               star <= rating
                 ? "fill-yellow-400 text-yellow-400"
                 : "fill-gray-200 text-gray-200"
-            }`}
+            } ${interactive ? "cursor-pointer hover:scale-110 transition-transform" : ""}`}
+            onClick={() => interactive && onRatingChange && onRatingChange(star)}
           />
         ))}
       </div>
     );
   };
 
+  const nextImage = () => {
+    if (venue?.photos && venue.photos.length > 0) {
+      setCurrentImageIndex((prev) => (prev + 1) % venue.photos.length);
+    }
+  };
+
+  const prevImage = () => {
+    if (venue?.photos && venue.photos.length > 0) {
+      setCurrentImageIndex((prev) => (prev - 1 + venue.photos.length) % venue.photos.length);
+    }
+  };
+
   if (venueLoading) {
     return (
-      <div className="container py-10">
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
-          <span className="ml-2 text-gray-500">Loading venue details...</span>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+          <p>Loading venue details...</p>
         </div>
       </div>
     );
   }
 
-  // Show fallback venue data even if API fails (for demo purposes)
-  if (venueError || !displayVenue) {
+  if (venueError || !venue) {
     return (
-      <div className="container py-10">
-        <div className="text-center py-20">
-          <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-500" />
-          <h2 className="text-xl font-semibold mb-2">Venue Not Found</h2>
-          <p className="text-muted-foreground mb-4">Unable to load venue details. The venue may not exist or the server is unavailable.</p>
-          <Button asChild>
-            <Link to="/venues">← Back to Venues</Link>
-          </Button>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">Failed to load venue details</p>
+          <Link to="/venues">
+            <Button variant="outline">Back to Venues</Button>
+          </Link>
         </div>
       </div>
     );
   }
 
   return (
-    <>
+    <div className="min-h-screen bg-gray-50">
       <SEO 
-        title={displayVenue ? `${displayVenue.name} – QuickCourt` : "Venue Details – QuickCourt"} 
-        description={displayVenue ? `Book ${displayVenue.name}. ${displayVenue.sports?.join(", ") || "Sports venue"}. Starting ₹${displayVenue.price}/hr in ${displayVenue.location}.` : "Venue booking details on QuickCourt"} 
+        title={`${venue.name} - QuickCourt`} 
+        description={`Book ${venue.name} at ${venue.location}. Rating: ${venue.rating}/5 with ${venue.totalReviews} reviews.`} 
       />
       
-      <section className="container py-10 max-w-7xl mx-auto">
-        {/* Breadcrumb */}
+      <div className="container mx-auto px-4 py-6 max-w-7xl">
+        {/* Back Navigation */}
         <div className="mb-6">
-          <Link 
-            to="/venues" 
-            className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-2"
-          >
-            ← Back to Venues
+          <Link to="/venues" className="inline-flex items-center text-gray-600 hover:text-gray-900">
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            Back to Venues
           </Link>
         </div>
 
         {/* Venue Header */}
-        <div className="mb-8">
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">
+        <div className="mb-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{displayVenue.name}</h1>
-              <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4" />
-                  {displayVenue.location}
-                </span>
-                <span className="flex items-center gap-2">
-                  {renderStars(typeof displayVenue.rating === 'string' ? parseFloat(displayVenue.rating) : displayVenue.rating || 0)}
-                  <span className="font-medium text-foreground">{typeof displayVenue.rating === 'string' ? parseFloat(displayVenue.rating).toFixed(1) : displayVenue.rating?.toFixed(1) || '0.0'}</span>
-                  <span>({displayVenue.totalReviews || 0} reviews)</span>
-                </span>
-                {displayVenue.timings && (
-                  <span className="flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    {displayVenue.timings}
-                  </span>
-                )}
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">{venue.name}</h1>
+              <div className="flex items-center gap-4 text-gray-600">
+                <div className="flex items-center gap-1">
+                  <MapPin className="w-4 h-4" />
+                  <span>{venue.location}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                  <span className="font-semibold">{venue.rating}</span>
+                  <span>({venue.totalReviews || 0} reviews)</span>
+                </div>
               </div>
             </div>
-            
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowReviewForm(true)}
-                className="flex items-center gap-2"
-              >
-                <MessageSquare className="h-4 w-4" />
-                Write Review
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowReportForm(true)}
-                className="flex items-center gap-2 text-red-600 border-red-200 hover:bg-red-50"
-              >
-                <Flag className="h-4 w-4" />
-                Report
-              </Button>
-            </div>
           </div>
-
-          {/* Sports Tags */}
-          {displayVenue.sports && displayVenue.sports.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {displayVenue.sports.map((sport) => (
-                <Badge key={sport} variant="secondary" className="px-3 py-1">
-                  {sport}
-                </Badge>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid lg:grid-cols-[1fr_400px] gap-8">
-          {/* Left Column - Main Details */}
-          <div className="space-y-8">
-            {/* Venue Photos */}
-            {displayVenue.photos && displayVenue.photos.length > 0 && (
-              <Card>
-                <CardContent className="p-6">
-                  <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg mb-4 overflow-hidden">
-                    <img 
-                      src={displayVenue.photos[0]}
-                      alt={displayVenue.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  {displayVenue.photos.length > 1 && (
-                    <div className="grid grid-cols-4 gap-2">
-                      {displayVenue.photos.slice(1, 5).map((photo, i) => (
-                        <div key={i} className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
-                          <img 
-                            src={photo}
-                            alt={`${displayVenue.name} photo ${i + 2}`}
-                            className="w-full h-full object-cover"
-                          />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - Images and Info */}
+          <div className="lg:col-span-2 space-y-8">
+            {/* Images/Videos Section */}
+            <Card>
+              <CardContent className="p-0">
+                <div className="relative">
+                  <div className="aspect-video bg-gray-200 rounded-t-lg overflow-hidden">
+                    {venue.photos && venue.photos.length > 0 ? (
+                      <img 
+                        src={venue.photos[currentImageIndex]} 
+                        alt={`${venue.name} - Image ${currentImageIndex + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                        <div className="text-center">
+                          <ImageIcon className="w-16 h-16 mx-auto mb-2" />
+                          <p>No images available</p>
                         </div>
-                      ))}
+                      </div>
+                    )}
+                    
+                    {/* Navigation Arrows */}
+                    {venue.photos && venue.photos.length > 1 && (
+                      <>
+                        <button
+                          onClick={prevImage}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={nextImage}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  
+                  {/* Image Counter */}
+                  {venue.photos && venue.photos.length > 1 && (
+                    <div className="absolute bottom-4 right-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
+                      {currentImageIndex + 1} / {venue.photos.length}
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Description */}
-            <Card>
-              <CardHeader>
-                <CardTitle>About this venue</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground leading-relaxed">
-                  {displayVenue.description}
-                </p>
+                  
+                  {/* Media Type Indicator */}
+                  <div className="absolute top-4 left-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4" />
+                    Images / Videos
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            {/* Facilities & Amenities */}
-            {displayVenue.facilities && displayVenue.facilities.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Facilities & Amenities</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {displayVenue.facilities.map((facility, index) => {
-                      const IconComponent = facility.icon || Shield;
+            {/* Available Sports */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  Available Sports
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {venue.available_sports && venue.available_sports.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {venue.available_sports.map((sport, index) => (
+                      <div 
+                        key={index} 
+                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-green-50 hover:border-green-200 border-2 border-transparent transition-all"
+                        onClick={() => handleSportClick(sport)}
+                      >
+                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                          <span className="text-lg">
+                            {sport.toLowerCase() === 'badminton' ? '🏸' :
+                             sport.toLowerCase() === 'tennis' ? '🎾' :
+                             sport.toLowerCase() === 'football' ? '⚽' :
+                             sport.toLowerCase() === 'cricket' || sport.toLowerCase().includes('cricket') ? '🏏' :
+                             sport.toLowerCase() === 'swimming' ? '🏊' :
+                             sport.toLowerCase() === 'table tennis' ? '🏓' : '🏟️'}
+                          </span>
+                        </div>
+                        <span className="font-medium capitalize">{sport}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500">No sports information available</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Sport Pricing Modal */}
+            <Dialog open={showSportModal} onOpenChange={setShowSportModal}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center justify-between">
+                    <span className="capitalize">{selectedSport}</span>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setShowSportModal(false)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </DialogTitle>
+                </DialogHeader>
+                
+                {pricingLoading ? (
+                  <div className="text-center py-4">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                    <p>Loading pricing...</p>
+                  </div>
+                ) : sportPricing ? (
+                  <div className="space-y-4">
+                    <Alert>
+                      <AlertDescription>
+                        Pricing is subjected to change and is controlled by venue
+                      </AlertDescription>
+                    </Alert>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="font-semibold text-lg mb-2">
+                          {sportPricing.name}
+                        </h3>
+                      </div>
+                      
+                      {/* Monday - Friday */}
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-2">Monday - Friday</h4>
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span>INR {sportPricing.weekdays.morning.price}.0 / hour</span>
+                            <span className="text-sm text-gray-600">
+                              {sportPricing.weekdays.morning.time}
+                            </span>
+                          </div>
+                          {sportPricing.weekdays.afternoon && (
+                            <div className="flex justify-between items-center">
+                              <span>INR {sportPricing.weekdays.afternoon.price}.0 / hour</span>
+                              <span className="text-sm text-gray-600">
+                                {sportPricing.weekdays.afternoon.time}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex justify-between items-center">
+                            <span>INR {sportPricing.weekdays.evening.price}.0 / hour</span>
+                            <span className="text-sm text-gray-600">
+                              {sportPricing.weekdays.evening.time}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Saturday - Sunday */}
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-2">Saturday - Sunday</h4>
+                        <div className="flex justify-between items-center">
+                          <span>INR {sportPricing.weekend.allDay.price}.0 / hour</span>
+                          <span className="text-sm text-gray-600">
+                            {sportPricing.weekend.allDay.time}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* Holiday(s) */}
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-2">Holiday(s)</h4>
+                        <div className="flex justify-between items-center">
+                          <span>INR {sportPricing.holiday.allDay.price}.0 / hour</span>
+                          <span className="text-sm text-gray-600">
+                            {sportPricing.holiday.allDay.time}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-gray-500">
+                    <p>Pricing information not available</p>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+
+            {/* Amenities */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="w-5 h-5" />
+                  Amenities
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {venue.amenities && venue.amenities.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {venue.amenities.map((amenity, index) => {
+                      const getAmenityIcon = (name: string) => {
+                        const lowerName = name.toLowerCase();
+                        if (lowerName.includes('parking')) return <Car className="w-4 h-4" />;
+                        if (lowerName.includes('wifi')) return <Wifi className="w-4 h-4" />;
+                        if (lowerName.includes('coffee') || lowerName.includes('cafe')) return <Coffee className="w-4 h-4" />;
+                        if (lowerName.includes('cctv') || lowerName.includes('security')) return <Shield className="w-4 h-4" />;
+                        return <Shield className="w-4 h-4" />;
+                      };
+
                       return (
-                        <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                          <IconComponent className="h-5 w-5 text-green-600" />
-                          <span className="font-medium">{facility.name}</span>
+                        <div key={index} className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
+                          <div className="text-green-600">
+                            {getAmenityIcon(amenity)}
+                          </div>
+                          <span className="text-sm">{amenity}</span>
                         </div>
                       );
                     })}
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                ) : (
+                  <p className="text-gray-500">No amenities information available</p>
+                )}
+              </CardContent>
+            </Card>
 
-            {/* Contact Information */}
-            {(displayVenue.phone || displayVenue.email || displayVenue.address) && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Contact Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {displayVenue.phone && (
-                      <div className="flex items-center gap-3">
-                        <Phone className="h-5 w-5 text-blue-600" />
-                        <div>
-                          <div className="font-medium">Phone</div>
-                          <div className="text-sm text-muted-foreground">{displayVenue.phone}</div>
-                        </div>
-                      </div>
-                    )}
-                    {displayVenue.email && (
-                      <div className="flex items-center gap-3">
-                        <Mail className="h-5 w-5 text-blue-600" />
-                        <div>
-                          <div className="font-medium">Email</div>
-                          <div className="text-sm text-muted-foreground">{displayVenue.email}</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {displayVenue.address && (
-                    <div className="flex items-start gap-3">
-                      <MapIcon className="h-5 w-5 text-blue-600 mt-0.5" />
-                      <div>
-                        <div className="font-medium">Address</div>
-                        <div className="text-sm text-muted-foreground">{displayVenue.address}</div>
-                      </div>
-                    </div>
+            {/* About Venue */}
+            <Card>
+              <CardHeader>
+                <CardTitle>About Venue</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="prose prose-gray max-w-none">
+                  {venue.description ? (
+                    <p className="text-gray-700 leading-relaxed">{venue.description}</p>
+                  ) : (
+                    <p className="text-gray-500">No description available for this venue.</p>
                   )}
-                  {displayVenue.coordinates && (
-                    <Button variant="outline" size="sm" className="flex items-center gap-2">
-                      <Navigation className="h-4 w-4" />
-                      Get Directions
-                      <ExternalLink className="h-3 w-3" />
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+                </div>
+              </CardContent>
+            </Card>
 
-            {/* Reviews Section */}
+            {/* Player Reviews & Ratings */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  <span>Reviews ({reviews.length})</span>
-                  <Button
-                    variant="outline"
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5" />
+                    Player Reviews & Ratings
+                  </div>
+                  <Button 
+                    variant="outline" 
                     size="sm"
                     onClick={() => setShowReviewForm(true)}
-                    className="flex items-center gap-2"
+                    disabled={!user}
                   >
-                    <MessageSquare className="h-4 w-4" />
                     Write Review
                   </Button>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                {reviewsLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                    <span className="ml-2">Loading reviews...</span>
-                  </div>
-                ) : reviewsError ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <AlertTriangle className="h-12 w-12 mx-auto mb-3 text-red-500" />
-                    <p>Unable to load reviews. Please try again later.</p>
-                  </div>
-                ) : reviews.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <MessageSquare className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                    <p>No reviews yet. Be the first to review this venue!</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {reviews.map((review: any) => (
-                      <div key={review.id} className="border-b border-gray-100 pb-6 last:border-b-0">
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              {renderStars(review.rating)}
-                              <span className="font-medium">{review.user?.name || "Anonymous"}</span>
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {new Date(review.createdAt).toLocaleDateString()}
-                            </div>
-                          </div>
-                          <Button variant="ghost" size="sm" className="flex items-center gap-1">
-                            <ThumbsUp className="h-3 w-3" />
-                            {review.helpfulCount || 0}
+              <CardContent className="space-y-4">
+                {/* Review Form */}
+                {showReviewForm && (
+                  <Card className="border-green-200">
+                    <CardContent className="p-4">
+                      <form onSubmit={handleReviewSubmit} className="space-y-4">
+                        <div>
+                          <Label>Rating</Label>
+                          {renderStars(reviewRating, true, setReviewRating)}
+                        </div>
+                        <div>
+                          <Label htmlFor="comment">Your Review</Label>
+                          <Textarea
+                            id="comment"
+                            value={reviewComment}
+                            onChange={(e) => setReviewComment(e.target.value)}
+                            placeholder="Share your experience..."
+                            required
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button type="submit" disabled={createReviewMutation.isPending}>
+                            {createReviewMutation.isPending ? (
+                              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            ) : null}
+                            Submit Review
+                          </Button>
+                          <Button 
+                            type="button" 
+                            variant="outline"
+                            onClick={() => setShowReviewForm(false)}
+                          >
+                            Cancel
                           </Button>
                         </div>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {review.comment}
-                        </p>
+                      </form>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Reviews List */}
+                {reviewsLoading ? (
+                  <div className="text-center py-4">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                    <p>Loading reviews...</p>
+                  </div>
+                ) : displayedReviews.length > 0 ? (
+                  <div className="space-y-4">
+                    {displayedReviews.map((review: Review) => (
+                      <div key={review.id} className="border rounded-lg p-4 bg-gray-50">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
+                              <span className="text-sm font-medium">
+                                {(review.user_name || review.user?.name)?.charAt(0).toUpperCase() || 'U'}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="font-medium">{review.user_name || review.user?.name || 'Anonymous'}</p>
+                              <div className="flex items-center gap-2">
+                                {renderStars(review.rating)}
+                                <span className="text-sm text-gray-500">
+                                  {new Date(review.created_at || review.createdAt).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        {review.comment && (
+                          <p className="text-gray-700 mt-2">{review.comment}</p>
+                        )}
                       </div>
                     ))}
+                    
+                    {/* Load More Button */}
+                    {reviews.length > 5 && !showAllReviews && (
+                      <div className="text-center">
+                        <Button 
+                          variant="outline" 
+                          onClick={() => setShowAllReviews(true)}
+                        >
+                          Load More Reviews ({reviews.length - 5} more)
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <MessageSquare className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                    <p>No reviews yet. Be the first to review!</p>
                   </div>
                 )}
               </CardContent>
             </Card>
           </div>
 
-          {/* Right Column - Booking Sidebar */}
-          <aside className="space-y-6">
+          {/* Right Sidebar */}
+          <div className="space-y-6">
+            {/* Book This Venue */}
             <Card className="sticky top-6">
-              <CardHeader>
-                <CardTitle>Book this venue</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span>Starting price</span>
-                  <span className="text-2xl font-bold">₹{displayVenue.price > 0 ? displayVenue.price : 'N/A'}/hr</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  Choose date and time at checkout
-                </div>
-                <Button className="w-full" size="lg" asChild>
-                  <Link to={`/booking/${displayVenue.id}`}>
-                    Book Now
-                  </Link>
-                </Button>
-                <div className="text-xs text-center text-muted-foreground">
-                  You won't be charged yet
+              <CardContent className="p-6">
+                <div className="text-center space-y-4"> 
+                  <Button 
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                    onClick={handleBookVenue}
+                  >
+                    Book This Venue
+                  </Button>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Quick Stats */}
+            {/* Operating Hours */}
             <Card>
               <CardHeader>
-                <CardTitle>Venue Stats</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  Operating Hours
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <Star className="h-4 w-4" />
-                    Rating
-                  </span>
-                  <span className="font-medium">{typeof displayVenue.rating === 'string' ? parseFloat(displayVenue.rating).toFixed(1) : displayVenue.rating?.toFixed(1) || '0.0'}/5</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4" />
-                    Reviews
-                  </span>
-                  <span className="font-medium">{displayVenue.totalReviews || reviews.length}</span>
-                </div>
-                {displayVenue.sports && displayVenue.sports.length > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      Sports
-                    </span>
-                    <span className="font-medium">{displayVenue.sports.length}</span>
+              <CardContent>
+                {venue.operatingHours ? (
+                  <div className="space-y-2">
+                    {Object.entries(venue.operatingHours).map(([day, hours]) => (
+                      <div key={day} className="flex justify-between">
+                        <span className="capitalize">{day}</span>
+                        <span className="text-gray-600">{typeof hours === 'string' ? hours : `${hours.open} - ${hours.close}`}</span>
+                      </div>
+                    ))}
                   </div>
+                ) : (
+                  <p className="text-gray-600">7:00AM - 11:00PM</p>
                 )}
               </CardContent>
             </Card>
-          </aside>
-        </div>
-      </section>
 
-      {/* Review Form Modal */}
-      {showReviewForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle>Write a Review</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleReviewSubmit} className="space-y-4">
-                <div>
-                  <Label>Rating</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setReviewData({ ...reviewData, rating: star })}
-                        className="p-1"
-                      >
-                        <StarIcon
-                          className={`w-6 h-6 ${
-                            star <= reviewData.rating
-                              ? "fill-yellow-400 text-yellow-400"
-                              : "fill-gray-200 text-gray-200"
-                          }`}
-                        />
-                      </button>
-                    ))}
+            {/* Address */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5" />
+                  Address
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <p className="text-gray-700">
+                    {venue.address || venue.location}
+                  </p>
+                  {venue.contactPhone && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-gray-500" />
+                      <span>{venue.contactPhone}</span>
+                    </div>
+                  )}
+                  {venue.contactEmail && (
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-gray-500" />
+                      <span>{venue.contactEmail}</span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Location Map */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapIcon className="w-5 h-5" />
+                  Location Map
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="aspect-square bg-gray-200 rounded-lg flex items-center justify-center">
+                  <div className="text-center text-gray-500">
+                    <MapIcon className="w-12 h-12 mx-auto mb-2" />
+                    <p>Map integration coming soon</p>
                   </div>
                 </div>
-                <div>
-                  <Label htmlFor="comment">Comment</Label>
-                  <Textarea
-                    id="comment"
-                    value={reviewData.comment}
-                    onChange={(e) => setReviewData({ ...reviewData, comment: e.target.value })}
-                    placeholder="Share your experience..."
-                    rows={4}
-                    required
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowReviewForm(false)}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1"
-                    disabled={createReviewMutation.isPending}
-                  >
-                    {createReviewMutation.isPending ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        Submitting...
-                      </>
-                    ) : (
-                      "Submit Review"
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      )}
-
-      {/* Report Form Modal */}
-      {showReportForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-red-600">
-                <AlertTriangle className="h-5 w-5" />
-                Report This Venue
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleReportSubmit} className="space-y-4">
-                <div>
-                  <Label htmlFor="reason">Reason for reporting</Label>
-                  <select
-                    id="reason"
-                    value={reportData.reason}
-                    onChange={(e) => setReportData({ ...reportData, reason: e.target.value })}
-                    className="w-full mt-1 p-2 border border-gray-300 rounded-md"
-                    required
-                  >
-                    <option value="">Select a reason</option>
-                    <option value="fake_listing">Fake listing</option>
-                    <option value="inappropriate_content">Inappropriate content</option>
-                    <option value="safety_concerns">Safety concerns</option>
-                    <option value="misleading_info">Misleading information</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={reportData.description}
-                    onChange={(e) => setReportData({ ...reportData, description: e.target.value })}
-                    placeholder="Please provide more details..."
-                    rows={4}
-                    required
-                  />
-                </div>
-                <Alert>
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    Reports are reviewed by our team. False reports may result in account suspension.
-                  </AlertDescription>
-                </Alert>
-                <div className="flex gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowReportForm(false)}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="destructive"
-                    className="flex-1"
-                  >
-                    Submit Report
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 };
 

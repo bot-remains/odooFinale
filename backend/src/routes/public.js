@@ -6,6 +6,7 @@ import {
   getCourtsBySport,
   getPopularVenues,
   getAvailableSports,
+  getSportPricing,
 } from '../controllers/publicController.js';
 import { authMiddleware } from '../middleware/auth.js';
 
@@ -71,5 +72,15 @@ router.get(
 
 // Get available sports
 router.get('/sports', getAvailableSports);
+
+// Get sport pricing for specific venue and sport
+router.get(
+  '/venues/:venueId/sports/:sportType/pricing',
+  [
+    param('venueId').isInt(),
+    param('sportType').isString().trim(),
+  ],
+  getSportPricing
+);
 
 export default router;

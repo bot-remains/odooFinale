@@ -262,12 +262,17 @@ const Index = () => {
     },
   ];
 
-  const popularSports = (Array.isArray(sportsData) && sportsData.length > 0) ? sportsData.map(sport => ({
-    name: sport.name,
-    image: `/${sport.name.toLowerCase().replace(/\s+/g, '_')}.jpg`,
-    id: sport.id,
-    description: getSportDescription(sport.name)
-  })) : fallbackSports;
+  const popularSports = (Array.isArray(sportsData) && sportsData.length > 0) ? sportsData
+    .filter(sport => sport && (sport.name || (sport as any).sport_type)) // Filter out sports without name or sport_type
+    .map(sport => {
+      const sportName = sport.name || (sport as any).sport_type; // Use name if available, otherwise sport_type
+      return {
+        name: sportName,
+        image: `/${sportName.toLowerCase().replace(/\s+/g, '_')}.jpg`,
+        id: sport.id || (sport as any).sport_type, // Use id if available, otherwise sport_type as identifier
+        description: getSportDescription(sportName)
+      };
+    }) : fallbackSports;
 
   const nextPage = () => {
     if (venues.length > 0) {

@@ -77,7 +77,7 @@ const getRevenueData = async (ownerId) => {
 // Get dashboard statistics
 export const getDashboard = async (req, res) => {
   try {
-    const ownerId = req.user.id;
+    const ownerId = req.user.userId || req.user.id;
 
     // Get venue statistics
     const venueStats = await getVenueStats(ownerId);
@@ -109,7 +109,7 @@ export const getDashboard = async (req, res) => {
 // Get all venues owned by the user
 export const getVenues = async (req, res) => {
   try {
-    const ownerId = req.user.id;
+    const ownerId = req.user.userId || req.user.id;
     const venues = await Venue.findByOwner(ownerId);
 
     // Get courts count for each venue
@@ -141,8 +141,12 @@ export const getVenues = async (req, res) => {
 // Create a new venue
 export const createVenue = async (req, res) => {
   try {
+    console.log('🔍 Create venue request body:', JSON.stringify(req.body, null, 2));
+    console.log('🔍 User object:', JSON.stringify(req.user, null, 2));
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
       return res.status(400).json({
         success: false,
         message: 'Validation failed',
@@ -154,7 +158,7 @@ export const createVenue = async (req, res) => {
 
     const venueData = {
       ...venueFields,
-      ownerId: req.user.id,
+      ownerId: req.user.userId || req.user.id,
     };
 
     // Create venue first
@@ -181,6 +185,7 @@ export const createVenue = async (req, res) => {
 
         // Create courts for the venue
         for (const courtData of courts) {
+          console.log('🔍 Creating court with data:', JSON.stringify(courtData, null, 2));
           const court = await Court.create({
             ...courtData,
             venueId: venue.id,
@@ -220,7 +225,12 @@ export const createVenue = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Create venue error:', error);
+    console.error('❌ Create venue error details:', {
+      message: error.message,
+      stack: error.stack,
+      user: req.user,
+      body: req.body,
+    });
     res.status(500).json({
       success: false,
       message: 'Failed to create venue',
@@ -243,7 +253,7 @@ export const getVenue = async (req, res) => {
     }
 
     // Check ownership
-    if (venue.ownerId !== req.user.id) {
+    if (venue.ownerId !== (req.user.userId || req.user.id)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied. You can only access your own venues.',
@@ -293,7 +303,7 @@ export const updateVenue = async (req, res) => {
     }
 
     // Check ownership
-    if (venue.ownerId !== req.user.id) {
+    if (venue.ownerId !== (req.user.userId || req.user.id)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied. You can only update your own venues.',
@@ -331,7 +341,7 @@ export const deleteVenue = async (req, res) => {
     }
 
     // Check ownership
-    if (venue.ownerId !== req.user.id) {
+    if (venue.ownerId !== (req.user.userId || req.user.id)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied. You can only delete your own venues.',

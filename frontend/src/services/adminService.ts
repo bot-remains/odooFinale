@@ -22,14 +22,14 @@ const adminApi = {
     // Map backend response to frontend types
     const data = response.data.data!;
     return {
-      totalUsers: data.stats.total_customers + data.stats.total_owners,
+      totalUsers: data.stats.total_users,
       totalVenues: data.stats.total_venues,
       totalBookings: data.stats.total_bookings,
       totalRevenue: data.stats.total_revenue,
       pendingVenues: data.stats.pending_venues,
-      activeUsers: data.stats.total_customers + data.stats.total_owners, // Adjust based on actual active users logic
-      recentBookings: [], // Would need separate endpoint for actual recent bookings
-      topVenues: [], // Would need additional endpoint for top venues
+      activeUsers: data.stats.total_users, // All users are considered active
+      recentBookings: data.recentBookings || [],
+      topVenues: data.topVenues || [],
       trends: data.trends || [],
       recentActivities: data.recentActivities || [],
     };

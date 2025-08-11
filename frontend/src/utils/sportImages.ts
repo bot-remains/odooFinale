@@ -81,12 +81,25 @@ export const getSportImage = (sportName: string): string => {
  * Get sport image for venue based on available sports and amenities
  */
 export const getVenueSportImage = (
-  availableSports: string[] = [], 
-  amenities: string[] = [],
+  availableSports: string[] | string | null | undefined = [], 
+  amenities: string[] | string | null | undefined = [],
   venueName: string = '',
   venueDescription: string = ''
 ): string => {
-  const allSportsData = [...availableSports, ...amenities];
+  // Ensure we have arrays to work with
+  const sportsArray = Array.isArray(availableSports) 
+    ? availableSports 
+    : availableSports 
+      ? [availableSports] 
+      : [];
+  
+  const amenitiesArray = Array.isArray(amenities) 
+    ? amenities 
+    : amenities 
+      ? [amenities] 
+      : [];
+  
+  const allSportsData = [...sportsArray, ...amenitiesArray];
   
   // Check all sports data for matches
   for (const sport of allSportsData) {

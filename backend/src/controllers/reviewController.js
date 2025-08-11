@@ -13,7 +13,7 @@ export const createReview = async (req, res) => {
     }
 
     const userId = req.user.id;
-    const { venueId, bookingId, rating, comment, courtId } = req.body;
+    const { venueId, bookingId, rating, comment } = req.body;
 
     // Verify user has a completed booking at this venue
     const { query } = await import('../config/database.js');
@@ -61,7 +61,6 @@ export const createReview = async (req, res) => {
       user_id: userId,
       venue_id: venueId,
       booking_id: bookingId,
-      court_id: courtId,
       rating: rating,
       comment: comment || '',
       created_at: new Date(),
@@ -69,8 +68,8 @@ export const createReview = async (req, res) => {
     };
 
     const insertQuery = `
-      INSERT INTO reviews (user_id, venue_id, booking_id, court_id, rating, comment, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO reviews (user_id, venue_id, booking_id, rating, comment, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `;
 
@@ -78,7 +77,6 @@ export const createReview = async (req, res) => {
       reviewData.user_id,
       reviewData.venue_id,
       reviewData.booking_id,
-      reviewData.court_id,
       reviewData.rating,
       reviewData.comment,
       reviewData.created_at,
@@ -99,12 +97,10 @@ export const createReview = async (req, res) => {
         r.*,
         u.name as user_name,
         u.avatar as user_avatar,
-        v.name as venue_name,
-        c.name as court_name
+        v.name as venue_name
       FROM reviews r
       JOIN users u ON r.user_id = u.id
       JOIN venues v ON r.venue_id = v.id
-      LEFT JOIN courts c ON r.court_id = c.id
       WHERE r.id = $1
     `;
 
@@ -196,12 +192,10 @@ export const updateReview = async (req, res) => {
         r.*,
         u.name as user_name,
         u.avatar as user_avatar,
-        v.name as venue_name,
-        c.name as court_name
+        v.name as venue_name
       FROM reviews r
       JOIN users u ON r.user_id = u.id
       JOIN venues v ON r.venue_id = v.id
-      LEFT JOIN courts c ON r.court_id = c.id
       WHERE r.id = $1
     `;
 
@@ -301,12 +295,9 @@ export const getVenueReviews = async (req, res) => {
       SELECT
         r.*,
         u.name as user_name,
-        u.avatar as user_avatar,
-        c.name as court_name,
-        c.sport_type
+        u.avatar as user_avatar
       FROM reviews r
       JOIN users u ON r.user_id = u.id
-      LEFT JOIN courts c ON r.court_id = c.id
       ${whereClause}
       ${orderClause}
       LIMIT $${paramCount} OFFSET $${paramCount + 1}
@@ -375,12 +366,9 @@ export const getUserReviews = async (req, res) => {
       SELECT
         r.*,
         v.name as venue_name,
-        v.location as venue_location,
-        c.name as court_name,
-        c.sport_type
+        v.location as venue_location
       FROM reviews r
       JOIN venues v ON r.venue_id = v.id
-      LEFT JOIN courts c ON r.court_id = c.id
       WHERE r.user_id = $1
       ORDER BY r.created_at DESC
       LIMIT $2 OFFSET $3

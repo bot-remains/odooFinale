@@ -11,6 +11,8 @@ export const getAdminDashboard = async (req, res) => {
       SELECT
         (SELECT COUNT(*) FROM users WHERE role = 'user') as total_customers,
         (SELECT COUNT(*) FROM users WHERE role = 'facility_owner') as total_owners,
+        (SELECT COUNT(*) FROM users WHERE role = 'admin') as total_admins,
+        (SELECT COUNT(*) FROM users) as total_users,
         (SELECT COUNT(*) FROM venues) as total_venues,
         (SELECT COUNT(*) FROM venues WHERE is_approved = true) as approved_venues,
         (SELECT COUNT(*) FROM venues WHERE is_approved = false) as pending_venues,
@@ -71,6 +73,51 @@ export const getAdminDashboard = async (req, res) => {
 
     const activitiesResult = await query(activitiesQuery);
 
+    // Get recent bookings (last 10)
+    const recentBookingsQuery = `
+      SELECT 
+        b.id,
+        b.booking_date,
+        b.start_time,
+        b.end_time,
+        b.total_amount,
+        b.status,
+        b.created_at,
+        c.name as court_name,
+        c.sport_type,
+        v.name as venue_name,
+        u.name as user_name,
+        u.email as user_email
+      FROM bookings b
+      JOIN courts c ON b.court_id = c.id
+      JOIN venues v ON c.venue_id = v.id
+      JOIN users u ON b.user_id = u.id
+      ORDER BY b.created_at DESC
+      LIMIT 10
+    `;
+
+    const recentBookingsResult = await query(recentBookingsQuery);
+
+    // Get top venues by booking count
+    const topVenuesQuery = `
+      SELECT 
+        v.id,
+        v.name,
+        v.location,
+        COUNT(b.id) as booking_count,
+        AVG(v.rating) as avg_rating,
+        SUM(CASE WHEN b.status = 'confirmed' THEN b.total_amount ELSE 0 END) as total_revenue
+      FROM venues v
+      LEFT JOIN courts c ON v.id = c.venue_id
+      LEFT JOIN bookings b ON c.id = b.court_id
+      WHERE v.is_approved = true
+      GROUP BY v.id, v.name, v.location
+      ORDER BY booking_count DESC
+      LIMIT 5
+    `;
+
+    const topVenuesResult = await query(topVenuesQuery);
+
     res.json({
       success: true,
       data: {
@@ -80,6 +127,8 @@ export const getAdminDashboard = async (req, res) => {
         },
         trends: trendResult.rows,
         recentActivities: activitiesResult.rows,
+        recentBookings: recentBookingsResult.rows,
+        topVenues: topVenuesResult.rows,
       },
     });
   } catch (error) {

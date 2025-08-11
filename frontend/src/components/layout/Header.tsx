@@ -19,7 +19,7 @@ const Header = () => {
 
   const { user, isAuthenticated, logout: authLogout } = useAuth();
   const { data: unreadCount = 0 } = useUnreadNotificationCount({
-    enabled: isAuthenticated && (user?.role === 'admin' || user?.role === 'facility_owner')
+    enabled: false // Disabled for now
   });
   const logoutMutation = useLogout();
 
@@ -36,23 +36,87 @@ const Header = () => {
       }
     });
   };
+
+  // Get the home URL based on user role
+  const getHomeUrl = () => {
+    if (!isAuthenticated || !user) return "/";
+    
+    switch (user.role) {
+      case "facility_owner":
+        return "/owner/dashboard";
+      case "admin":
+        return "/admin/dashboard";
+      case "user":
+      default:
+        return "/";
+    }
+  };
   return (
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
       <div className="container flex h-16 items-center justify-between">
         {/* Logo */}
-        <Link to="/" className="flex items-center space-x-2">
+        <Link to={getHomeUrl()} className="flex items-center space-x-2">
           <div className="font-bold text-xl text-primary">QuickCourt</div>
         </Link>
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center space-x-6">
-          <Link
-            to="/venues"
-            className="text-foreground/60 hover:text-foreground transition-colors flex items-center space-x-2"
-          >
-            <Calendar className="h-4 w-4" />
-            <span className="font-bold">Book</span>
-          </Link>
+          {isAuthenticated && user ? (
+            // Role-based navigation
+            user.role === "facility_owner" ? (
+              <>
+                <Link
+                  to="/owner/venues"
+                  className="text-foreground/60 hover:text-foreground transition-colors flex items-center space-x-2"
+                >
+                  <Calendar className="h-4 w-4" />
+                  <span className="font-bold">My Venues</span>
+                </Link>
+                <Link
+                  to="/owner/bookings"
+                  className="text-foreground/60 hover:text-foreground transition-colors flex items-center space-x-2"
+                >
+                  <Calendar className="h-4 w-4" />
+                  <span className="font-bold">Bookings</span>
+                </Link>
+              </>
+            ) : user.role === "admin" ? (
+              <>
+                <Link
+                  to="/admin/venues"
+                  className="text-foreground/60 hover:text-foreground transition-colors flex items-center space-x-2"
+                >
+                  <Calendar className="h-4 w-4" />
+                  <span className="font-bold">Manage Venues</span>
+                </Link>
+                <Link
+                  to="/admin/users"
+                  className="text-foreground/60 hover:text-foreground transition-colors flex items-center space-x-2"
+                >
+                  <User className="h-4 w-4" />
+                  <span className="font-bold">Users</span>
+                </Link>
+              </>
+            ) : (
+              // Regular user navigation
+              <Link
+                to="/venues"
+                className="text-foreground/60 hover:text-foreground transition-colors flex items-center space-x-2"
+              >
+                <Calendar className="h-4 w-4" />
+                <span className="font-bold">Book</span>
+              </Link>
+            )
+          ) : (
+            // Not authenticated navigation
+            <Link
+              to="/venues"
+              className="text-foreground/60 hover:text-foreground transition-colors flex items-center space-x-2"
+            >
+              <Calendar className="h-4 w-4" />
+              <span className="font-bold">Book</span>
+            </Link>
+          )}
         </nav>
 
         {/* Desktop Auth Buttons */}
@@ -133,14 +197,68 @@ const Header = () => {
       {isMenuOpen && (
         <div className="md:hidden border-t bg-background">
           <nav className="container py-4 space-y-4">
-            <Link
-              to="/venues"
-              className="flex items-center space-x-2 text-foreground/60 hover:text-foreground transition-colors"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              <Calendar className="h-4 w-4" />
-              <span className="font-bold">Book</span>
-            </Link>
+            {isAuthenticated && user ? (
+              // Role-based mobile navigation
+              user.role === "facility_owner" ? (
+                <>
+                  <Link
+                    to="/owner/venues"
+                    className="flex items-center space-x-2 text-foreground/60 hover:text-foreground transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <Calendar className="h-4 w-4" />
+                    <span className="font-bold">My Venues</span>
+                  </Link>
+                  <Link
+                    to="/owner/bookings"
+                    className="flex items-center space-x-2 text-foreground/60 hover:text-foreground transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <Calendar className="h-4 w-4" />
+                    <span className="font-bold">Bookings</span>
+                  </Link>
+                </>
+              ) : user.role === "admin" ? (
+                <>
+                  <Link
+                    to="/admin/venues"
+                    className="flex items-center space-x-2 text-foreground/60 hover:text-foreground transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <Calendar className="h-4 w-4" />
+                    <span className="font-bold">Manage Venues</span>
+                  </Link>
+                  <Link
+                    to="/admin/users"
+                    className="flex items-center space-x-2 text-foreground/60 hover:text-foreground transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <User className="h-4 w-4" />
+                    <span className="font-bold">Users</span>
+                  </Link>
+                </>
+              ) : (
+                // Regular user mobile navigation
+                <Link
+                  to="/venues"
+                  className="flex items-center space-x-2 text-foreground/60 hover:text-foreground transition-colors"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <Calendar className="h-4 w-4" />
+                  <span className="font-bold">Book</span>
+                </Link>
+              )
+            ) : (
+              // Not authenticated mobile navigation
+              <Link
+                to="/venues"
+                className="flex items-center space-x-2 text-foreground/60 hover:text-foreground transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <Calendar className="h-4 w-4" />
+                <span className="font-bold">Book</span>
+              </Link>
+            )}
             <div className="pt-4 border-t space-y-2">
               {isAuthenticated ? (
                 <>

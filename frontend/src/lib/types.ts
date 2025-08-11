@@ -40,6 +40,7 @@ export interface Venue {
   contactPhone: string;
   contactEmail: string;
   amenities: string[];
+  photos?: string[]; // Array of photo URLs
   available_sports?: string[]; // Sports available at this venue
   min_price?: number; // Minimum price from courts
   max_price?: number; // Maximum price from courts
@@ -79,7 +80,18 @@ export interface CreateVenueRequest {
   contactPhone: string;
   contactEmail: string;
   amenities: string[];
-  operatingHours: {
+  courts?: {
+    name: string;
+    sportType: string;
+    pricePerHour: number;
+    operatingHours: {
+      start: string;
+      end: string;
+    };
+    maxPlayers: number;
+    description?: string;
+  }[];
+  operatingHours?: {
     [key: string]: {
       open: string;
       close: string;
@@ -151,20 +163,21 @@ export interface Review {
   userId: number;
   venueId: number;
   bookingId: number;
-  courtId: number;
   rating: number;
   comment: string;
   helpfulCount: number;
   createdAt: string;
+  created_at?: string; // Backend compatibility
   updatedAt?: string;
   user?: User;
+  user_name?: string; // Backend compatibility
+  user_avatar?: string; // Backend compatibility
   venue?: Venue;
 }
 
 export interface CreateReviewRequest {
   venueId: number;
   bookingId: number;
-  courtId: number;
   rating: number;
   comment: string;
 }
@@ -296,6 +309,8 @@ export interface RecentActivity {
 export interface BackendDashboardStats {
   total_customers: number;
   total_owners: number;
+  total_admins: number;
+  total_users: number;
   total_venues: number;
   approved_venues: number;
   pending_venues: number;
@@ -312,6 +327,8 @@ export interface BackendDashboardResponse {
   stats: BackendDashboardStats;
   trends: TrendData[];
   recentActivities: RecentActivity[];
+  recentBookings: any[]; // Array of recent booking objects
+  topVenues: any[]; // Array of top venue objects
 }
 
 export interface UserManagementParams {

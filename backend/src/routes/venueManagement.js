@@ -55,6 +55,14 @@ router.post(
       .trim()
       .isLength({ min: 3, max: 255 })
       .withMessage('Location must be between 3 and 255 characters'),
+    body('contactPhone')
+      .trim()
+      .isLength({ min: 10, max: 20 })
+      .withMessage('Contact phone must be between 10 and 20 characters'),
+    body('contactEmail')
+      .trim()
+      .isEmail()
+      .withMessage('Contact email must be a valid email address'),
     body('amenities').optional().isArray().withMessage('Amenities must be an array'),
     body('amenities.*')
       .optional()
