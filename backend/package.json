@@ -9,6 +9,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "init-db": "node scripts/init-db.js",
+    "test:email-otp": "node test-email-otp.js",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
     "format": "prettier --write .",
@@ -29,10 +31,14 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.17.1",
     "morgan": "^1.10.1",
+    "nodemailer": "^7.0.5",
+    "pg": "^8.16.3",
     "prettier": "^3.6.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
+    "@types/pg": "^8.15.5",
+    "axios": "^1.11.0",
     "concurrently": "^9.2.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
