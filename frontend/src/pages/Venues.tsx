@@ -61,13 +61,13 @@ const VenueCard = ({
   return (
     <Card className="h-full hover:shadow-lg transition-shadow">
       <div className="relative h-48 overflow-hidden">
-        <img 
+        <img
           src={getVenueSportImage(
             venue.available_sports,
             venue.amenities,
             venue.name,
             venue.description
-          )} 
+          )}
           alt={venue.name}
           className="w-full h-full object-cover"
           onError={(e) => {
@@ -78,7 +78,10 @@ const VenueCard = ({
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
         <div className="absolute top-3 left-3">
           <Badge variant="secondary" className="bg-white/90 text-black">
-            {venue.amenities?.includes('Indoor') || venue.amenities?.includes('AC') ? 'Indoor' : 'Outdoor'}
+            {venue.amenities?.includes("Indoor") ||
+            venue.amenities?.includes("AC")
+              ? "Indoor"
+              : "Outdoor"}
           </Badge>
         </div>
         <div className="absolute top-3 right-3">
@@ -123,9 +126,7 @@ const VenueCard = ({
               </span>
             </div>
             <div className="text-right">
-              <p className="text-lg font-bold">
-                ₹{venue.min_price || 300}/hr
-              </p>
+              <p className="text-lg font-bold">₹{venue.min_price || 300}/hr</p>
               <p className="text-xs text-gray-500">Starting from</p>
             </div>
           </div>
@@ -133,18 +134,22 @@ const VenueCard = ({
           <div className="flex flex-wrap gap-1">
             {venue.available_sports && venue.available_sports.length > 0 ? (
               // Show available sports
-              venue.available_sports.slice(0, 3).map((sport: string, index: number) => (
-                <Badge key={index} variant="outline" className="text-xs">
-                  {sport}
-                </Badge>
-              ))
+              venue.available_sports
+                .slice(0, 3)
+                .map((sport: string, index: number) => (
+                  <Badge key={index} variant="outline" className="text-xs">
+                    {sport}
+                  </Badge>
+                ))
             ) : venue.amenities?.length > 0 ? (
               // Fallback to amenities
-              venue.amenities.slice(0, 3).map((amenity: string, index: number) => (
-                <Badge key={index} variant="outline" className="text-xs">
-                  {amenity}
-                </Badge>
-              ))
+              venue.amenities
+                .slice(0, 3)
+                .map((amenity: string, index: number) => (
+                  <Badge key={index} variant="outline" className="text-xs">
+                    {amenity}
+                  </Badge>
+                ))
             ) : (
               // Default amenities
               <>
@@ -174,22 +179,24 @@ const VenueCard = ({
 
 const Venues = () => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [locationQuery, setLocationQuery] = useState("");
   const [selectedSports, setSelectedSports] = useState<string[]>([]);
+  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
   const [selectedType, setSelectedType] = useState("all"); // indoor/outdoor
   const [priceRange, setPriceRange] = useState([2000]);
   const [minRating, setMinRating] = useState("all");
   const [sortBy, setSortBy] = useState<
-    "rating" | "price" | "distance" | "name"
+    "rating" | "price" | "name" | "created_at" | "distance"
   >("rating");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc"); // New sort order state
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(12);
+  const [showFilters, setShowFilters] = useState(false);
 
-  const itemsPerPage = 9;
-
-  // Extended sports list as requested
+  // Extended sports list
   const availableSports = [
     "Cricket",
-    "Football", 
+    "Football",
     "Volleyball",
     "Tennis",
     "Swimming",
@@ -197,7 +204,23 @@ const Venues = () => {
     "Badminton",
     "Basketball",
     "Hockey",
-    "Squash"
+    "Squash",
+  ];
+
+  // Common amenities for filtering
+  const availableAmenities = [
+    "Parking",
+    "Restrooms",
+    "Changing Rooms",
+    "Cafeteria",
+    "First Aid",
+    "Equipment Rental",
+    "Lockers",
+    "WiFi",
+    "Air Conditioning",
+    "Shower",
+    "Security",
+    "CCTV",
   ];
 
   // Prepare search parameters
@@ -206,17 +229,32 @@ const Venues = () => {
       limit: itemsPerPage,
       offset: (currentPage - 1) * itemsPerPage,
       sortBy,
-      sortOrder, // Include sort order
+      sortOrder,
     };
 
-    if (searchQuery) params.search = searchQuery;
-    if (selectedSports.length > 0) params.sportType = selectedSports[0]; // API might accept only one sport
-    if (selectedType !== "all") params.venueType = selectedType; // indoor/outdoor filter
+    if (searchQuery.trim()) params.search = searchQuery.trim();
+    if (locationQuery.trim()) params.location = locationQuery.trim();
+    if (selectedSports.length > 0) params.sportType = selectedSports[0]; // API accepts one sport
     if (minRating !== "all") params.minRating = parseFloat(minRating);
     if (priceRange[0] < 2000) params.maxPrice = priceRange[0];
+    if (selectedType !== "all") params.venueType = selectedType;
+
+    // Note: Amenities filtering done client-side for now due to backend data type issues
+    // if (selectedAmenities.length > 0) params.amenities = selectedAmenities.join(',');
 
     return params;
-  }, [searchQuery, selectedSports, selectedType, minRating, priceRange, sortBy, sortOrder, currentPage]);
+  }, [
+    searchQuery,
+    locationQuery,
+    selectedSports,
+    selectedType,
+    minRating,
+    priceRange,
+    sortBy,
+    sortOrder,
+    currentPage,
+    itemsPerPage,
+  ]);
 
   // Fetch data using React Query
   const {
@@ -225,6 +263,26 @@ const Venues = () => {
     error: venuesError,
     refetch,
   } = useVenues(searchParams);
+
+  // Memoize venues data
+  const venues = useMemo(() => venuesData?.venues || [], [venuesData?.venues]);
+  const totalVenues = venuesData?.pagination?.total || 0;
+  const hasNextPage = venuesData?.pagination?.hasNext || false;
+
+  // Apply client-side amenities filtering for display
+  const displayVenues = useMemo(() => {
+    const baseVenues = venues;
+    if (selectedAmenities.length === 0) return baseVenues;
+
+    return baseVenues.filter((venue) => {
+      if (!venue.amenities || venue.amenities.length === 0) return false;
+      return selectedAmenities.every((amenity) =>
+        venue.amenities.some((venueAmenity) =>
+          venueAmenity.toLowerCase().includes(amenity.toLowerCase())
+        )
+      );
+    });
+  }, [venues, selectedAmenities]);
 
   // Handle loading and error states
   if (venuesError) {
@@ -248,10 +306,6 @@ const Venues = () => {
     );
   }
 
-  const venues = venuesData?.items || [];
-  const totalVenues = venuesData?.pagination?.total || 0;
-  const hasNextPage = venuesData?.pagination?.hasNext || false;
-
   const handleSportToggle = (sport: string) => {
     setSelectedSports((prev) =>
       prev.includes(sport) ? prev.filter((s) => s !== sport) : [...prev, sport]
@@ -259,9 +313,20 @@ const Venues = () => {
     setCurrentPage(1);
   };
 
+  const handleAmenityToggle = (amenity: string) => {
+    setSelectedAmenities((prev) =>
+      prev.includes(amenity)
+        ? prev.filter((a) => a !== amenity)
+        : [...prev, amenity]
+    );
+    setCurrentPage(1);
+  };
+
   const resetFilters = () => {
     setSearchQuery("");
+    setLocationQuery("");
     setSelectedSports([]);
+    setSelectedAmenities([]);
     setSelectedType("all");
     setPriceRange([2000]);
     setMinRating("all");
@@ -272,8 +337,10 @@ const Venues = () => {
 
   const getActiveFiltersCount = () => {
     let count = 0;
-    if (searchQuery) count++;
+    if (searchQuery.trim()) count++;
+    if (locationQuery.trim()) count++;
     if (selectedSports.length > 0) count++;
+    if (selectedAmenities.length > 0) count++;
     if (selectedType !== "all") count++;
     if (priceRange[0] < 2000) count++;
     if (minRating !== "all") count++;
@@ -297,22 +364,58 @@ const Venues = () => {
             </p>
           </div>
 
-          {getActiveFiltersCount() > 0 && (
-            <Button variant="outline" onClick={resetFilters} className="gap-2">
-              <X className="h-4 w-4" />
-              Clear Filters ({getActiveFiltersCount()})
+          <div className="flex items-center gap-2">
+            {/* Mobile Filter Toggle */}
+            <Button
+              variant="outline"
+              className="lg:hidden"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="h-4 w-4 mr-2" />
+              Filters{" "}
+              {getActiveFiltersCount() > 0 && `(${getActiveFiltersCount()})`}
             </Button>
-          )}
+
+            {getActiveFiltersCount() > 0 && (
+              <Button
+                variant="outline"
+                onClick={resetFilters}
+                className="gap-2"
+              >
+                <X className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  Clear Filters ({getActiveFiltersCount()})
+                </span>
+                <span className="sm:hidden">
+                  Clear ({getActiveFiltersCount()})
+                </span>
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Filters Sidebar */}
-          <div className="lg:col-span-1">
+          <div
+            className={`lg:col-span-1 ${
+              showFilters ? "block" : "hidden lg:block"
+            }`}
+          >
             <Card className="sticky top-4">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Filter className="h-5 w-5" />
-                  Filters
+                <CardTitle className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-5 w-5" />
+                    Filters
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="lg:hidden"
+                    onClick={() => setShowFilters(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -331,6 +434,21 @@ const Venues = () => {
                   />
                 </div>
 
+                {/* Location Filter */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Location
+                  </label>
+                  <Input
+                    placeholder="City or area..."
+                    value={locationQuery}
+                    onChange={(e) => {
+                      setLocationQuery(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+
                 {/* Sports Filter */}
                 <div>
                   <label className="text-sm font-medium mb-3 block">
@@ -338,10 +456,7 @@ const Venues = () => {
                   </label>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
                     {availableSports.map((sport) => (
-                      <div
-                        key={sport}
-                        className="flex items-center space-x-2"
-                      >
+                      <div key={sport} className="flex items-center space-x-2">
                         <Checkbox
                           id={sport}
                           checked={selectedSports.includes(sport)}
@@ -352,6 +467,33 @@ const Venues = () => {
                           className="text-sm cursor-pointer"
                         >
                           {sport}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Amenities Filter */}
+                <div>
+                  <label className="text-sm font-medium mb-3 block">
+                    Amenities
+                  </label>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {availableAmenities.map((amenity) => (
+                      <div
+                        key={amenity}
+                        className="flex items-center space-x-2"
+                      >
+                        <Checkbox
+                          id={`amenity-${amenity}`}
+                          checked={selectedAmenities.includes(amenity)}
+                          onCheckedChange={() => handleAmenityToggle(amenity)}
+                        />
+                        <Label
+                          htmlFor={`amenity-${amenity}`}
+                          className="text-sm cursor-pointer"
+                        >
+                          {amenity}
                         </Label>
                       </div>
                     ))}
@@ -429,13 +571,18 @@ const Venues = () => {
 
           {/* Venues Grid */}
           <div className="lg:col-span-3">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+              <div className="flex flex-wrap items-center gap-4">
                 <span className="text-sm text-gray-600">Sort by:</span>
                 <Select
                   value={sortBy}
                   onValueChange={(
-                    value: "rating" | "price" | "distance" | "name"
+                    value:
+                      | "rating"
+                      | "price"
+                      | "name"
+                      | "created_at"
+                      | "distance"
                   ) => setSortBy(value)}
                 >
                   <SelectTrigger className="w-40">
@@ -445,10 +592,10 @@ const Venues = () => {
                     <SelectItem value="rating">Rating</SelectItem>
                     <SelectItem value="price">Price</SelectItem>
                     <SelectItem value="name">Name</SelectItem>
-                    <SelectItem value="distance">Distance</SelectItem>
+                    <SelectItem value="created_at">Newest</SelectItem>
                   </SelectContent>
                 </Select>
-                
+
                 <Select
                   value={sortOrder}
                   onValueChange={(value: "asc" | "desc") => setSortOrder(value)}
@@ -463,10 +610,33 @@ const Venues = () => {
                 </Select>
               </div>
 
-              <Button variant="outline" size="sm" className="gap-2">
-                <ArrowUpDown className="h-4 w-4" />
-                {totalVenues} results
-              </Button>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Show:</span>
+                  <Select
+                    value={itemsPerPage.toString()}
+                    onValueChange={(value) => {
+                      setItemsPerPage(Number(value));
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="6">6</SelectItem>
+                      <SelectItem value="12">12</SelectItem>
+                      <SelectItem value="24">24</SelectItem>
+                      <SelectItem value="48">48</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button variant="outline" size="sm" className="gap-2">
+                  <ArrowUpDown className="h-4 w-4" />
+                  {totalVenues} results
+                </Button>
+              </div>
             </div>
 
             {/* Venues Grid */}
@@ -476,8 +646,8 @@ const Venues = () => {
                 Array.from({ length: itemsPerPage }).map((_, index) => (
                   <VenueCard key={index} isLoading />
                 ))
-              ) : venues.length > 0 ? (
-                venues.map((venue) => (
+              ) : displayVenues.length > 0 ? (
+                displayVenues.map((venue) => (
                   <VenueCard key={venue.id} venue={venue} />
                 ))
               ) : (
@@ -492,30 +662,60 @@ const Venues = () => {
               )}
             </div>
 
-            {/* Pagination */}
+            {/* Enhanced Pagination */}
             {!venuesLoading && venues.length > 0 && (
-              <div className="flex items-center justify-center gap-4 mt-8">
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    setCurrentPage((prev) => Math.max(prev - 1, 1))
-                  }
-                  disabled={currentPage === 1}
-                >
-                  Previous
-                </Button>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t">
+                <div className="text-sm text-gray-600">
+                  Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                  {Math.min(currentPage * itemsPerPage, totalVenues)} of{" "}
+                  {totalVenues} venues
+                </div>
 
-                <span className="text-sm text-gray-600">
-                  Page {currentPage} of {Math.ceil(totalVenues / itemsPerPage)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                  >
+                    First
+                  </Button>
 
-                <Button
-                  variant="outline"
-                  onClick={() => setCurrentPage((prev) => prev + 1)}
-                  disabled={!hasNextPage}
-                >
-                  Next
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(prev - 1, 1))
+                    }
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </Button>
+
+                  <span className="px-3 py-1 text-sm bg-gray-100 rounded">
+                    {currentPage} of {Math.ceil(totalVenues / itemsPerPage)}
+                  </span>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((prev) => prev + 1)}
+                    disabled={!hasNextPage}
+                  >
+                    Next
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setCurrentPage(Math.ceil(totalVenues / itemsPerPage))
+                    }
+                    disabled={!hasNextPage}
+                  >
+                    Last
+                  </Button>
+                </div>
               </div>
             )}
           </div>

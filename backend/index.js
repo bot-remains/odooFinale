@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 // Import database and routes
 import { connectDB } from './src/config/prisma.js';
 import authRoutes from './src/routes/auth.js';
+import userRoutes from './src/routes/user.js';
 import venueManagementRoutes from './src/routes/venueManagement.js';
 import publicRoutes from './src/routes/public.js';
 import bookingRoutes from './src/routes/bookings.js';
@@ -34,15 +35,14 @@ const corsOptions = {
     process.env.FRONTEND_URL || 'http://localhost:8080',
     'http://localhost:3000',
     'http://localhost:5173',
+    'http://localhost:8081', // Added for current frontend port
+    'http://localhost:8082', // Added for current frontend port
   ],
   credentials: true,
   optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
-<<<<<<< HEAD
-=======
 
->>>>>>> b98a7f5 (migrated to prisma)
 // Compression middleware
 app.use(compression());
 
@@ -55,6 +55,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/user', userRoutes);
 app.use('/api/venue-management', venueManagementRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/bookings', bookingRoutes);
@@ -66,9 +67,9 @@ app.use('/api/payments', paymentRoutes);
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
-    // Test database connection
-    const { query } = await import('./src/config/database.js');
-    await query('SELECT 1');
+    // Test database connection with Prisma
+    const prisma = (await import('./src/config/prisma.js')).default;
+    await prisma.$queryRaw`SELECT 1`;
 
     res.status(200).json({
       status: 'OK',
@@ -143,7 +144,6 @@ const startServer = async () => {
       console.log('⚠️ Email service will be tested when first used');
     }
 
-<<<<<<< HEAD
     // Create tables if they don't exist (basic setup)
     await User.createTable();
     await Venue.createTable();
@@ -154,9 +154,6 @@ const startServer = async () => {
 
     // Initialize new tables for extended functionality
     await initializeNewTables();
-=======
-    console.log('✅ All services initialized successfully');
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
 
     // Start server
     app.listen(PORT, HOST, () => {

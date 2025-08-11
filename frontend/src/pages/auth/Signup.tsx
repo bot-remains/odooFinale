@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRegister } from "@/services/authService";
 import { useAuth } from "@/contexts/AuthContext";
@@ -46,66 +46,69 @@ const Signup = () => {
   });
 
   // Random name avatars array
-  const avatars = [
-    "👩‍🦰",
-    "👩🏻‍🦰",
-    "👩🏼‍🦰",
-    "👩🏽‍🦰",
-    "👩🏾‍🦰",
-    "👩🏿‍🦰",
-    "👩‍🎤",
-    "👩🏻‍🎤",
-    "👩🏼‍🎤",
-    "👩🏽‍🎤",
-    "👩🏾‍🎤",
-    "👩🏿‍🎤",
-    "👩‍💼",
-    "👩🏻‍💼",
-    "👩🏼‍💼",
-    "👩🏽‍💼",
-    "👩🏾‍💼",
-    "👩🏿‍💼",
-    "👨‍🦱",
-    "👨🏻‍🦱",
-    "👨🏼‍🦱",
-    "👨🏽‍🦱",
-    "👨🏾‍🦱",
-    "👨🏿‍🦱",
-    "👨‍💼",
-    "👨🏻‍💼",
-    "👨🏼‍💼",
-    "👨🏽‍💼",
-    "👨🏾‍💼",
-    "👨🏿‍💼",
-    "👨‍🎤",
-    "👨🏻‍🎤",
-    "👨🏼‍🎤",
-    "👨🏽‍🎤",
-    "👨🏾‍🎤",
-    "👨🏿‍🎤",
-    "👩‍🦱",
-    "👩🏻‍🦱",
-    "👩🏼‍🦱",
-    "👩🏽‍🦱",
-    "👩🏾‍🦱",
-    "👩🏿‍🦱",
-    "👩‍🔬",
-    "👩🏻‍🔬",
-    "👩🏼‍🔬",
-    "👩🏽‍🔬",
-    "👩🏾‍🔬",
-    "👩🏿‍🔬",
-  ];
+  const avatars = useMemo(
+    () => [
+      "👩‍🦰",
+      "👩🏻‍🦰",
+      "👩🏼‍🦰",
+      "👩🏽‍🦰",
+      "👩🏾‍🦰",
+      "👩🏿‍🦰",
+      "👩‍🎤",
+      "👩🏻‍🎤",
+      "👩🏼‍🎤",
+      "👩🏽‍🎤",
+      "👩🏾‍🎤",
+      "👩🏿‍🎤",
+      "👩‍💼",
+      "👩🏻‍💼",
+      "👩🏼‍💼",
+      "👩🏽‍💼",
+      "👩🏾‍💼",
+      "👩🏿‍💼",
+      "👨‍🦱",
+      "👨🏻‍🦱",
+      "👨🏼‍🦱",
+      "👨🏽‍🦱",
+      "👨🏾‍🦱",
+      "👨🏿‍🦱",
+      "👨‍💼",
+      "👨🏻‍💼",
+      "👨🏼‍💼",
+      "👨🏽‍💼",
+      "👨🏾‍💼",
+      "👨🏿‍💼",
+      "👨‍🎤",
+      "👨🏻‍🎤",
+      "👨🏼‍🎤",
+      "👨🏽‍🎤",
+      "👨🏾‍🎤",
+      "👨🏿‍🎤",
+      "👩‍🦱",
+      "👩🏻‍🦱",
+      "👩🏼‍🦱",
+      "👩🏽‍🦱",
+      "👩🏾‍🦱",
+      "👩🏿‍🦱",
+      "👩‍🔬",
+      "👩🏻‍🔬",
+      "👩🏼‍🔬",
+      "👩🏽‍🔬",
+      "👩🏾‍🔬",
+      "👩🏿‍🔬",
+    ],
+    []
+  );
+
+  const generateRandomAvatar = useCallback(() => {
+    const randomIndex = Math.floor(Math.random() * avatars.length);
+    setCurrentAvatar(avatars[randomIndex]);
+  }, [avatars]);
 
   // Generate random avatar on component mount
   useEffect(() => {
     generateRandomAvatar();
-  }, []);
-
-  const generateRandomAvatar = () => {
-    const randomIndex = Math.floor(Math.random() * avatars.length);
-    setCurrentAvatar(avatars[randomIndex]);
-  };
+  }, [generateRandomAvatar]);
 
   // Validation functions
   const validateName = (name) => {
@@ -194,10 +197,9 @@ const Signup = () => {
           email: formData.email,
           password: formData.password,
           phone: formData.phone || "000-000-0000", // Use provided phone or default
-          role:
-            formData.role === "customer"
-              ? "user"
-              : (formData.role as "user" | "facility_owner"),
+          role: (formData.role === "owner" ? "facility_owner" : "user") as
+            | "user"
+            | "facility_owner",
         };
 
         const authResponse = await register.mutateAsync(registerData);

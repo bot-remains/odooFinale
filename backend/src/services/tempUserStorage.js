@@ -3,6 +3,7 @@
 class TempUserStorage {
   constructor() {
     this.tempUsers = new Map();
+    this.resetTokens = new Map();
 
     // Cleanup expired entries every 10 minutes
     setInterval(
@@ -44,6 +45,26 @@ class TempUserStorage {
     return tempUser;
   }
 
+  // Check if temporary user exists
+  hasTempUser(email) {
+    return this.tempUsers.has(email) && this.get(email) !== null;
+  }
+
+  // Update OTP for existing temporary user
+  updateOTP(email, newOtpCode) {
+    const tempUser = this.get(email);
+    if (!tempUser) {
+      throw new Error('Registration session not found');
+    }
+
+    tempUser.otpCode = newOtpCode;
+    tempUser.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    this.tempUsers.set(email, tempUser);
+
+    console.log(`🔄 OTP updated for: ${email}`);
+    return tempUser;
+  }
+
   // Verify OTP and get user data
   verifyOTP(email, otpCode) {
     const tempUser = this.get(email);
@@ -73,6 +94,50 @@ class TempUserStorage {
     return removed;
   }
 
+  // Store password reset token
+  storeResetToken(email, token, expiry) {
+    const resetData = {
+      token,
+      email,
+      expiry,
+      createdAt: new Date(),
+    };
+
+    this.resetTokens.set(token, resetData);
+    console.log(`🔑 Reset token stored for: ${email}`);
+    return resetData;
+  }
+
+  // Verify reset token and get email
+  verifyResetToken(token) {
+    const resetData = this.resetTokens.get(token);
+
+    if (!resetData) {
+      throw new Error('Invalid reset token');
+    }
+
+    if (new Date() > resetData.expiry) {
+      this.resetTokens.delete(token);
+      throw new Error('Reset token has expired');
+    }
+
+    return resetData.email;
+  }
+
+  // Remove reset token
+  removeResetToken(email) {
+    let removed = false;
+    for (const [token, resetData] of this.resetTokens.entries()) {
+      if (resetData.email === email) {
+        this.resetTokens.delete(token);
+        removed = true;
+        console.log(`🗑️ Reset token removed for: ${email}`);
+        break;
+      }
+    }
+    return removed;
+  }
+
   // Regenerate OTP for existing temporary user
   regenerateOTP(email) {
     const tempUser = this.get(email);
@@ -97,6 +162,7 @@ class TempUserStorage {
     const now = new Date();
     let cleaned = 0;
 
+    // Cleanup expired temp users
     for (const [email, tempUser] of this.tempUsers.entries()) {
       if (now > tempUser.otpExpiry) {
         this.tempUsers.delete(email);
@@ -104,8 +170,16 @@ class TempUserStorage {
       }
     }
 
+    // Cleanup expired reset tokens
+    for (const [token, resetData] of this.resetTokens.entries()) {
+      if (now > resetData.expiry) {
+        this.resetTokens.delete(token);
+        cleaned++;
+      }
+    }
+
     if (cleaned > 0) {
-      console.log(`🧹 Cleaned up ${cleaned} expired temporary user registrations`);
+      console.log(`🧹 Cleaned up ${cleaned} expired entries`);
     }
   }
 
@@ -113,6 +187,7 @@ class TempUserStorage {
   getStats() {
     return {
       totalTempUsers: this.tempUsers.size,
+      totalResetTokens: this.resetTokens.size,
       emails: Array.from(this.tempUsers.keys()),
     };
   }

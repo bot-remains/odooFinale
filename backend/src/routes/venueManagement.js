@@ -16,6 +16,11 @@ import {
   toggleCourtStatus,
 } from '../controllers/courtController.js';
 import {
+  getTimeSlots,
+  createTimeSlots,
+  updateTimeSlot,
+  deleteTimeSlot,
+  generateDefaultTimeSlots,
   getBlockedSlots,
   blockTimeSlots,
   unblockTimeSlots,
@@ -234,6 +239,101 @@ router.patch(
 );
 
 // TIME SLOT MANAGEMENT
+router.get(
+  '/venues/:venueId/courts/:courtId/time-slots',
+  [
+    param('venueId').isInt({ min: 1 }).withMessage('Invalid venue ID'),
+    param('courtId').isInt({ min: 1 }).withMessage('Invalid court ID'),
+    query('dayOfWeek')
+      .optional()
+      .isInt({ min: 0, max: 6 })
+      .withMessage('Day of week must be 0-6 (Sunday-Saturday)'),
+  ],
+  getTimeSlots
+);
+
+router.post(
+  '/venues/:venueId/courts/:courtId/time-slots',
+  [
+    param('venueId').isInt({ min: 1 }).withMessage('Invalid venue ID'),
+    param('courtId').isInt({ min: 1 }).withMessage('Invalid court ID'),
+    body('timeSlots').isArray({ min: 1 }).withMessage('Time slots must be a non-empty array'),
+    body('timeSlots.*.dayOfWeek')
+      .isInt({ min: 0, max: 6 })
+      .withMessage('Day of week must be 0-6 (Sunday-Saturday)'),
+    body('timeSlots.*.startTime')
+      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+      .withMessage('Start time must be in HH:MM format'),
+    body('timeSlots.*.endTime')
+      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+      .withMessage('End time must be in HH:MM format'),
+    body('timeSlots.*.isAvailable')
+      .optional()
+      .isBoolean()
+      .withMessage('isAvailable must be a boolean'),
+  ],
+  createTimeSlots
+);
+
+router.put(
+  '/venues/:venueId/courts/:courtId/time-slots/:slotId',
+  [
+    param('venueId').isInt({ min: 1 }).withMessage('Invalid venue ID'),
+    param('courtId').isInt({ min: 1 }).withMessage('Invalid court ID'),
+    param('slotId').isInt({ min: 1 }).withMessage('Invalid slot ID'),
+    body('dayOfWeek')
+      .optional()
+      .isInt({ min: 0, max: 6 })
+      .withMessage('Day of week must be 0-6 (Sunday-Saturday)'),
+    body('startTime')
+      .optional()
+      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+      .withMessage('Start time must be in HH:MM format'),
+    body('endTime')
+      .optional()
+      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+      .withMessage('End time must be in HH:MM format'),
+    body('isAvailable').optional().isBoolean().withMessage('isAvailable must be a boolean'),
+  ],
+  updateTimeSlot
+);
+
+router.delete(
+  '/venues/:venueId/courts/:courtId/time-slots/:slotId',
+  [
+    param('venueId').isInt({ min: 1 }).withMessage('Invalid venue ID'),
+    param('courtId').isInt({ min: 1 }).withMessage('Invalid court ID'),
+    param('slotId').isInt({ min: 1 }).withMessage('Invalid slot ID'),
+  ],
+  deleteTimeSlot
+);
+
+router.post(
+  '/venues/:venueId/courts/:courtId/generate-default-slots',
+  [
+    param('venueId').isInt({ min: 1 }).withMessage('Invalid venue ID'),
+    param('courtId').isInt({ min: 1 }).withMessage('Invalid court ID'),
+    body('operatingHours.start')
+      .optional()
+      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+      .withMessage('Start time must be in HH:MM format'),
+    body('operatingHours.end')
+      .optional()
+      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+      .withMessage('End time must be in HH:MM format'),
+    body('slotDuration')
+      .optional()
+      .isInt({ min: 15, max: 240 })
+      .withMessage('Slot duration must be between 15 and 240 minutes'),
+    body('daysOfWeek').optional().isArray().withMessage('Days of week must be an array'),
+    body('daysOfWeek.*')
+      .optional()
+      .isInt({ min: 0, max: 6 })
+      .withMessage('Each day must be 0-6 (Sunday-Saturday)'),
+  ],
+  generateDefaultTimeSlots
+);
+
 router.get(
   '/venues/:venueId/courts/:courtId/blocked-slots',
   [

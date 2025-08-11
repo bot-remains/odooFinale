@@ -9,18 +9,60 @@ import {
   PopularVenue,
   Sport,
   AvailabilityCheck,
+  AvailableTimeSlotsResponse,
   TimeSlot,
   BlockTimeSlotRequest,
 } from "@/lib/types";
+
+// Backend API parameter interface
+interface BackendVenueParams {
+  search?: string;
+  city?: string;
+  sport?: string;
+  priceMin?: number;
+  priceMax?: number;
+  rating?: number;
+  amenities?: string;
+  venueType?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  limit?: number;
+  offset?: number;
+}
+
+// Backend venues response interface
+interface BackendVenuesResponse {
+  venues: Venue[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasNext: boolean;
+  };
+}
 
 // Public API calls
 const publicVenueApi = {
   getVenues: async (
     params: VenueSearchParams = {}
-  ): Promise<PaginatedResponse<Venue>> => {
-    const response = await api.get<ApiResponse<PaginatedResponse<Venue>>>(
+  ): Promise<BackendVenuesResponse> => {
+    // Transform frontend parameters to match backend API expectations
+    const apiParams: BackendVenueParams = {};
+
+    if (params.search) apiParams.search = params.search;
+    if (params.location) apiParams.city = params.location; // backend expects 'city'
+    if (params.sportType) apiParams.sport = params.sportType; // backend expects 'sport'
+    if (params.maxPrice) apiParams.priceMax = params.maxPrice;
+    if (params.minRating) apiParams.rating = params.minRating; // backend expects 'rating'
+    if (params.venueType) apiParams.venueType = params.venueType;
+    if (params.sortBy) apiParams.sortBy = params.sortBy;
+    if (params.sortOrder) apiParams.sortOrder = params.sortOrder;
+    if (params.limit) apiParams.limit = params.limit;
+    if (params.offset) apiParams.offset = params.offset;
+
+    const response = await api.get<ApiResponse<BackendVenuesResponse>>(
       "/public/venues",
-      { params }
+      { params: apiParams }
     );
     return response.data.data!;
   },
@@ -186,6 +228,88 @@ const venueManagementApi = {
       `/venue-management/venues/${venueId}/courts/${courtId}/unblock-slots`,
       data
     );
+  },
+
+  getTimeSlots: async (
+    venueId: number,
+    courtId: number,
+    dayOfWeek?: number
+  ): Promise<TimeSlot[]> => {
+    const params = dayOfWeek !== undefined ? { dayOfWeek } : {};
+    const response = await api.get<ApiResponse<TimeSlot[]>>(
+      `/venue-management/venues/${venueId}/courts/${courtId}/time-slots`,
+      { params }
+    );
+    return response.data.data!;
+  },
+
+  createTimeSlots: async (
+    venueId: number,
+    courtId: number,
+    timeSlots: Array<{
+      dayOfWeek: number;
+      startTime: string;
+      endTime: string;
+      isAvailable?: boolean;
+    }>
+  ): Promise<void> => {
+    await api.post(
+      `/venue-management/venues/${venueId}/courts/${courtId}/time-slots`,
+      { timeSlots }
+    );
+  },
+
+  updateTimeSlot: async (
+    venueId: number,
+    courtId: number,
+    slotId: number,
+    data: {
+      dayOfWeek?: number;
+      startTime?: string;
+      endTime?: string;
+      isAvailable?: boolean;
+    }
+  ): Promise<TimeSlot> => {
+    const response = await api.put<ApiResponse<TimeSlot>>(
+      `/venue-management/venues/${venueId}/courts/${courtId}/time-slots/${slotId}`,
+      data
+    );
+    return response.data.data!;
+  },
+
+  deleteTimeSlot: async (
+    venueId: number,
+    courtId: number,
+    slotId: number
+  ): Promise<void> => {
+    await api.delete(
+      `/venue-management/venues/${venueId}/courts/${courtId}/time-slots/${slotId}`
+    );
+  },
+
+  generateDefaultTimeSlots: async (
+    venueId: number,
+    courtId: number,
+    config: {
+      operatingHours?: { start: string; end: string };
+      slotDuration?: number;
+      daysOfWeek?: number[];
+    }
+  ): Promise<void> => {
+    await api.post(
+      `/venue-management/venues/${venueId}/courts/${courtId}/generate-default-slots`,
+      config
+    );
+  },
+
+  getAvailableTimeSlots: async (
+    courtId: number,
+    date: string
+  ): Promise<AvailableTimeSlotsResponse> => {
+    const response = await api.get<ApiResponse<AvailableTimeSlotsResponse>>(
+      `/public/courts/${courtId}/available-slots?date=${date}`
+    );
+    return response.data.data!;
   },
 };
 
@@ -494,5 +618,170 @@ export const useUnblockTimeSlots = () => {
       const apiError = handleApiError(error);
       throw apiError;
     },
+  });
+};
+
+// Additional time slot management hooks
+export const useTimeSlots = (
+  venueId: number,
+  courtId: number,
+  dayOfWeek?: number
+) => {
+  return useQuery({
+    queryKey: ["venueManagement", "timeSlots", venueId, courtId, dayOfWeek],
+    queryFn: () => venueManagementApi.getTimeSlots(venueId, courtId, dayOfWeek),
+    enabled: !!venueId && !!courtId,
+    staleTime: 2 * 60 * 1000,
+  });
+};
+
+export const useCreateTimeSlots = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      venueId,
+      courtId,
+      timeSlots,
+    }: {
+      venueId: number;
+      courtId: number;
+      timeSlots: Array<{
+        dayOfWeek: number;
+        startTime: string;
+        endTime: string;
+        isAvailable?: boolean;
+      }>;
+    }) => venueManagementApi.createTimeSlots(venueId, courtId, timeSlots),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: [
+          "venueManagement",
+          "timeSlots",
+          variables.venueId,
+          variables.courtId,
+        ],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["venueManagement", "courts", variables.venueId],
+      });
+    },
+    onError: (error) => {
+      const apiError = handleApiError(error);
+      throw apiError;
+    },
+  });
+};
+
+export const useUpdateTimeSlot = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      venueId,
+      courtId,
+      slotId,
+      data,
+    }: {
+      venueId: number;
+      courtId: number;
+      slotId: number;
+      data: {
+        dayOfWeek?: number;
+        startTime?: string;
+        endTime?: string;
+        isAvailable?: boolean;
+      };
+    }) => venueManagementApi.updateTimeSlot(venueId, courtId, slotId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: [
+          "venueManagement",
+          "timeSlots",
+          variables.venueId,
+          variables.courtId,
+        ],
+      });
+    },
+    onError: (error) => {
+      const apiError = handleApiError(error);
+      throw apiError;
+    },
+  });
+};
+
+export const useDeleteTimeSlot = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      venueId,
+      courtId,
+      slotId,
+    }: {
+      venueId: number;
+      courtId: number;
+      slotId: number;
+    }) => venueManagementApi.deleteTimeSlot(venueId, courtId, slotId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: [
+          "venueManagement",
+          "timeSlots",
+          variables.venueId,
+          variables.courtId,
+        ],
+      });
+    },
+    onError: (error) => {
+      const apiError = handleApiError(error);
+      throw apiError;
+    },
+  });
+};
+
+export const useGenerateDefaultTimeSlots = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      venueId,
+      courtId,
+      config,
+    }: {
+      venueId: number;
+      courtId: number;
+      config: {
+        operatingHours?: { start: string; end: string };
+        slotDuration?: number;
+        daysOfWeek?: number[];
+      };
+    }) => venueManagementApi.generateDefaultTimeSlots(venueId, courtId, config),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: [
+          "venueManagement",
+          "timeSlots",
+          variables.venueId,
+          variables.courtId,
+        ],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["venueManagement", "courts", variables.venueId],
+      });
+    },
+    onError: (error) => {
+      const apiError = handleApiError(error);
+      throw apiError;
+    },
+  });
+};
+
+export const useAvailableTimeSlots = (courtId: number, date: string) => {
+  return useQuery({
+    queryKey: ["public", "availableTimeSlots", courtId, date],
+    queryFn: () => venueManagementApi.getAvailableTimeSlots(courtId, date),
+    enabled: !!courtId && !!date,
+    staleTime: 1 * 60 * 1000, // 1 minute
   });
 };

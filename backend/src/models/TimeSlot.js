@@ -166,10 +166,31 @@ class TimeSlot {
     const targetDate = new Date(date);
     const dayOfWeek = targetDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
 
-    // Get all time slots for this court and day
+    // First get the court to ensure we're working with the correct venue
+    const court = await prisma.court.findFirst({
+      where: {
+        id: parseInt(courtId),
+        isActive: true,
+      },
+      include: {
+        venue: {
+          select: {
+            id: true,
+            isApproved: true,
+          },
+        },
+      },
+    });
+
+    if (!court || !court.venue.isApproved) {
+      return [];
+    }
+
+    // Get all time slots for this specific court, venue, and day
     const timeSlots = await prisma.timeSlot.findMany({
       where: {
         courtId: parseInt(courtId),
+        venueId: court.venue.id, // Filter by specific venue
         dayOfWeek,
         isAvailable: true,
       },
@@ -187,10 +208,11 @@ class TimeSlot {
       },
     });
 
-    // Get existing bookings for this date
+    // Get existing bookings for this date, court, and venue
     const existingBookings = await prisma.booking.findMany({
       where: {
         courtId: parseInt(courtId),
+        venueId: court.venue.id, // Filter by specific venue
         bookingDate: targetDate,
         status: {
           not: 'cancelled',
@@ -210,11 +232,8 @@ class TimeSlot {
         const bookingStart = new Date(booking.startTime);
         const bookingEnd = new Date(booking.endTime);
 
-        // Check for time overlap
-        return (
-          (slotStart < bookingEnd && slotEnd > bookingStart) ||
-          (bookingStart < slotEnd && bookingEnd > slotStart)
-        );
+        // Check for time overlap - use proper overlap detection
+        return slotStart < bookingEnd && slotEnd > bookingStart;
       });
     });
 

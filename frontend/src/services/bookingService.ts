@@ -122,9 +122,13 @@ export const useCreateBooking = () => {
   return useMutation({
     mutationFn: bookingApi.createBooking,
     onSuccess: () => {
-      // Invalidate relevant queries
+      // Invalidate relevant queries to refresh data
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
       queryClient.invalidateQueries({ queryKey: ["venues", "details"] }); // For availability updates
+      queryClient.invalidateQueries({ queryKey: ["venues", "timeSlots"] }); // For time slot availability
+      queryClient.invalidateQueries({
+        queryKey: ["public", "availableTimeSlots"],
+      }); // For available time slots
       queryClient.invalidateQueries({
         queryKey: ["venueManagement", "timeSlots"],
       });

@@ -88,6 +88,35 @@ class EmailService {
     }
   }
 
+  // Send password reset email
+  async sendPasswordResetEmail(email, name, resetToken) {
+    const transporter = this.getTransporter();
+
+    if (!transporter) {
+      console.log(`📧 Password reset token for ${email}: ${resetToken}`);
+      console.log('⚠️ Email service not configured - reset token logged to console');
+      return { messageId: 'console-log', email, resetToken };
+    }
+
+    try {
+      const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+      const mailOptions = {
+        from: `"QuickCourt" <${process.env.SMTP_USER}>`,
+        to: email,
+        subject: 'Reset Your Password - QuickCourt',
+        html: this.getPasswordResetEmailTemplate(name, resetUrl, resetToken),
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      console.log('✅ Password reset email sent successfully:', info.messageId);
+      return info;
+    } catch (error) {
+      console.error('❌ Error sending password reset email:', error.message);
+      console.log(`📧 Password reset token (email failed): ${resetToken}`);
+      return { messageId: 'email-failed', email, resetToken, error: error.message };
+    }
+  }
+
   // OTP Email Template
   getOTPEmailTemplate(name, otpCode) {
     return `
@@ -174,6 +203,55 @@ class EmailService {
               Share your experience and help others
             </div>
             <p>Ready to get started? Visit our platform and book your first court!</p>
+            <p>Best regards,<br>The QuickCourt Team</p>
+          </div>
+          <div class="footer">
+            <p><small>© 2025 QuickCourt. All rights reserved.</small></p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  // Password Reset Email Template
+  getPasswordResetEmailTemplate(name, resetUrl, resetToken) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Reset Your Password</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 0; background-color: #f4f4f4; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff; }
+          .header { background-color: #dc2626; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+          .content { padding: 30px 20px; }
+          .reset-button { display: inline-block; background-color: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+          .token-box { background-color: #f8fafc; border: 2px solid #e5e7eb; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0; }
+          .footer { background-color: #f8fafc; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🔒 QuickCourt</h1>
+            <p>Password Reset Request</p>
+          </div>
+          <div class="content">
+            <h2>Hi ${name}!</h2>
+            <p>We received a request to reset your password for your QuickCourt account. If you made this request, click the button below to reset your password:</p>
+            <div style="text-align: center;">
+              <a href="${resetUrl}" class="reset-button">Reset Password</a>
+            </div>
+            <p>Or copy and paste this link into your browser:</p>
+            <div class="token-box">
+              <p><small>Reset Link:</small></p>
+              <p style="word-break: break-all; font-size: 12px;">${resetUrl}</p>
+            </div>
+            <p><strong>This link will expire in 1 hour.</strong></p>
+            <p>If you didn't request a password reset, please ignore this email. Your password will not be changed.</p>
             <p>Best regards,<br>The QuickCourt Team</p>
           </div>
           <div class="footer">

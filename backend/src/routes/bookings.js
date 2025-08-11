@@ -32,6 +32,7 @@ router.get(
 router.post(
   '/',
   [
+    body('venueId').isInt().withMessage('Venue ID is required'),
     body('courtId').isInt().withMessage('Court ID is required'),
     body('bookingDate').isISO8601().withMessage('Valid booking date is required'),
     body('startTime')
@@ -40,8 +41,8 @@ router.post(
     body('endTime')
       .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
       .withMessage('Valid end time is required (HH:mm format)'),
-    body('notes').optional().isString().trim().isLength({ max: 500 }),
     body('totalAmount').optional().isFloat({ min: 0 }),
+    body('notes').optional().isString().trim().isLength({ max: 500 }),
   ],
   createBooking
 );

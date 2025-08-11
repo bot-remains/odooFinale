@@ -2,6 +2,7 @@ import UserPrisma from '../models/User.js';
 import jwt from 'jsonwebtoken';
 import emailService from '../services/emailService.js';
 import tempUserStorage from '../services/tempUserStorage.js';
+import prisma from '../config/prisma.js';
 
 // Generate JWT token
 const generateToken = (payload) => {
@@ -388,6 +389,185 @@ export const changePassword = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to change password',
+    });
+  }
+};
+
+// Forgot password
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required',
+      });
+    }
+
+    // Find user by email
+    const user = await UserPrisma.findByEmail(email);
+    if (!user) {
+      // Don't reveal if user exists or not for security
+      return res.status(200).json({
+        success: true,
+        message: 'If an account with this email exists, a password reset link has been sent.',
+      });
+    }
+
+    // Generate reset token
+    const resetToken =
+      Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Store reset token temporarily
+    tempUserStorage.storeResetToken(email, resetToken, resetTokenExpiry);
+
+    // Send reset email
+    try {
+      await emailService.sendPasswordResetEmail(email, user.name, resetToken);
+      console.log('✅ Password reset email sent successfully to:', email);
+    } catch (emailError) {
+      console.error('❌ Email sending error:', emailError.message);
+      console.log('🔗 Reset Token (email failed):', resetToken);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'If an account with this email exists, a password reset link has been sent.',
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process password reset request',
+    });
+  }
+};
+
+// Reset password
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reset token and new password are required',
+      });
+    }
+
+    // Verify reset token
+    let email;
+    try {
+      email = tempUserStorage.verifyResetToken(token);
+    } catch (tempError) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token',
+      });
+    }
+
+    // Find user
+    const user = await UserPrisma.findByEmail(email);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await UserPrisma.hashPassword(password);
+
+    // Update password
+    await user.update({
+      password: hashedPassword,
+    });
+
+    // Clean up reset token
+    tempUserStorage.removeResetToken(email);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset successfully',
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset password',
+    });
+  }
+};
+
+// Logout
+export const logout = async (req, res) => {
+  try {
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully',
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to logout',
+    });
+  }
+};
+
+// Get user statistics
+export const getUserStats = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [totalBookings, upcomingBookings, completedBookings, cancelledBookings] =
+      await Promise.all([
+        prisma.booking.count({
+          where: { userId: userId },
+        }),
+        prisma.booking.count({
+          where: {
+            userId: userId,
+            status: 'confirmed',
+            bookingDate: {
+              gte: new Date(),
+            },
+          },
+        }),
+        prisma.booking.count({
+          where: {
+            userId: userId,
+            status: 'completed',
+          },
+        }),
+        prisma.booking.count({
+          where: {
+            userId: userId,
+            status: 'cancelled',
+          },
+        }),
+      ]);
+
+    res.status(200).json({
+      success: true,
+      message: 'User statistics retrieved successfully',
+      data: {
+        totalBookings,
+        upcomingBookings,
+        completedBookings,
+        cancelledBookings,
+      },
+    });
+  } catch (error) {
+    console.error('Get user stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve user statistics',
     });
   }
 };

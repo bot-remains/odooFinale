@@ -66,7 +66,7 @@ export interface VenueSearchParams {
   venueType?: string; // indoor/outdoor
   minRating?: number;
   maxPrice?: number;
-  sortBy?: "rating" | "price" | "distance" | "name";
+  sortBy?: "rating" | "price" | "distance" | "name" | "created_at";
   sortOrder?: "asc" | "desc"; // sort direction
   limit?: number;
   offset?: number;
@@ -142,6 +142,7 @@ export interface Booking {
 }
 
 export interface CreateBookingRequest {
+  venueId: number;
   courtId: number;
   bookingDate: string;
   startTime: string;
@@ -202,6 +203,40 @@ export interface TimeSlot {
   bookingId?: number;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface AvailableTimeSlotsResponse {
+  court: {
+    id: number;
+    name: string;
+    sportType: string;
+    pricePerHour: number;
+    venue: {
+      id: number;
+      name: string;
+      isApproved: boolean;
+    };
+  };
+  date: string;
+  dayOfWeek: number;
+  availableSlots: {
+    id: number;
+    venueId: number;
+    courtId: number;
+    dayOfWeek: number;
+    dayName: string;
+    startTime: string;
+    endTime: string;
+    formattedStartTime: string;
+    formattedEndTime: string;
+    duration: number;
+    price: number;
+    isAvailable: boolean;
+    createdAt: string;
+    courtName: string;
+    sportType: string;
+    pricePerHour: number;
+  }[];
 }
 
 export interface BlockTimeSlotRequest {

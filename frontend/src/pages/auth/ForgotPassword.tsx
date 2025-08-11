@@ -2,20 +2,20 @@ import SEO from "@/components/SEO";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useForgotPassword } from "@/services/authService";
 import heroImage from "@/assets/hero-quickcourt.jpg";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
   const { toast } = useToast();
+  const forgotPassword = useForgotPassword();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email) {
       toast({
         title: "Missing email",
@@ -36,37 +36,39 @@ const ForgotPassword = () => {
       return;
     }
 
-    setIsLoading(true);
+    try {
+      await forgotPassword.mutateAsync(email);
 
-    // Simulate API call for password reset
-    await new Promise(resolve => setTimeout(resolve, 2000));
+      toast({
+        title: "Password reset link sent! 📧",
+        description:
+          "If an account with this email exists, you'll receive a password reset link.",
+      });
 
-    setIsLoading(false);
-
-    toast({
-      title: "Password reset link sent! 📧",
-      description: "Check your email for password reset instructions.",
-    });
-
-    // Redirect to reset password page (simulating email link click)
-    setTimeout(() => {
-      navigate("/reset-password");
-    }, 2000);
+      // Clear the email input
+      setEmail("");
+    } catch (error) {
+      toast({
+        title: "Failed to send reset link",
+        description: error.message || "Please try again later.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
     <div className="min-h-screen flex">
-      <SEO 
-        title="Forgot Password | QuickCourt" 
+      <SEO
+        title="Forgot Password | QuickCourt"
         description="Reset your QuickCourt account password."
       />
-      
+
       {/* Left Section - Image */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-50 to-indigo-100 relative overflow-hidden">
         <div className="absolute inset-0 bg-black bg-opacity-20"></div>
-        <img 
-          src={heroImage} 
-          alt="Sports Court" 
+        <img
+          src={heroImage}
+          alt="Sports Court"
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 flex items-center justify-center p-8">
@@ -90,7 +92,8 @@ const ForgotPassword = () => {
               Reset Password
             </h2>
             <p className="text-gray-600">
-              Enter your email address and we'll send you a link to reset your password.
+              Enter your email address and we'll send you a link to reset your
+              password.
             </p>
           </div>
 
@@ -98,7 +101,10 @@ const ForgotPassword = () => {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email Input */}
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium text-gray-700">
+              <Label
+                htmlFor="email"
+                className="text-sm font-medium text-gray-700"
+              >
                 Email Address
               </Label>
               <Input
@@ -108,24 +114,26 @@ const ForgotPassword = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-white border-gray-300 text-black placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500"
                 placeholder="Enter your email address"
-                disabled={isLoading}
+                disabled={forgotPassword.isPending}
                 required
               />
             </div>
 
             {/* Submit Button */}
-            <Button 
-              type="submit" 
-              disabled={isLoading}
+            <Button
+              type="submit"
+              disabled={forgotPassword.isPending}
               className="w-full bg-black text-white hover:bg-gray-800 font-medium py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? "Sending reset link..." : "Send Reset Link"}
+              {forgotPassword.isPending
+                ? "Sending reset link..."
+                : "Send Reset Link"}
             </Button>
 
             {/* Back to Login Link */}
             <div className="text-center">
-              <Link 
-                to="/login" 
+              <Link
+                to="/login"
                 className="text-sm text-blue-600 hover:text-blue-800 underline"
               >
                 ← Back to Login
@@ -137,7 +145,10 @@ const ForgotPassword = () => {
           <div className="text-center text-xs text-gray-500 mt-8">
             <p>
               Remember your password?{" "}
-              <Link to="/login" className="text-blue-600 hover:text-blue-800 underline">
+              <Link
+                to="/login"
+                className="text-blue-600 hover:text-blue-800 underline"
+              >
                 Sign in here
               </Link>
             </p>

@@ -42,7 +42,7 @@ export const getUserBookings = async (req, res) => {
     res.json({
       success: true,
       data: {
-        bookings,
+        items: bookings, // Changed from 'bookings' to 'items' to match frontend interface
         pagination: {
           total: totalCount,
           limit: parseInt(limit),
@@ -115,21 +115,60 @@ export const getBookingDetails = async (req, res) => {
 // Create a new booking (simplified)
 export const createBooking = async (req, res) => {
   try {
-    const { venueId, courtId, bookingDate, startTime, endTime, duration } = req.body;
+    const { courtId, bookingDate, startTime, endTime, totalAmount, notes } = req.body;
     const userId = req.user.id;
+
+    // Validate required fields
+    if (!courtId || !bookingDate || !startTime || !endTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'courtId, bookingDate, startTime, and endTime are required',
+      });
+    }
+
+    // Validate time format
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
+      return res.status(400).json({
+        success: false,
+        message: 'startTime and endTime must be in HH:mm format',
+      });
+    }
+
+    // Validate that end time is after start time
+    const start = new Date(`1970-01-01T${startTime}`);
+    const end = new Date(`1970-01-01T${endTime}`);
+    if (end <= start) {
+      return res.status(400).json({
+        success: false,
+        message: 'End time must be after start time',
+      });
+    }
+
+    // Validate booking date is not in the past
+    const bookingDateObj = new Date(bookingDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (bookingDateObj < today) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot book for past dates',
+      });
+    }
 
     // Check if court exists and is available
     const court = await prisma.court.findFirst({
       where: {
         id: parseInt(courtId),
-        venueId: parseInt(venueId),
         isActive: true,
       },
       include: {
         venue: {
           select: {
+            id: true,
             name: true,
-            pricePerHour: true,
+            isApproved: true,
           },
         },
       },
@@ -142,18 +181,56 @@ export const createBooking = async (req, res) => {
       });
     }
 
+    if (!court.venue.isApproved) {
+      return res.status(400).json({
+        success: false,
+        message: 'Venue is not approved for bookings',
+      });
+    }
+
+    // Check if the time slot exists and is available in the database
+    const dayOfWeek = bookingDateObj.getDay();
+    const timeSlot = await prisma.timeSlot.findFirst({
+      where: {
+        courtId: parseInt(courtId),
+        dayOfWeek: dayOfWeek,
+        startTime: {
+          gte: new Date(`1970-01-01T${startTime}:00.000Z`),
+          lt: new Date(`1970-01-01T${startTime}:01.000Z`), // Allow 1 minute tolerance
+        },
+        endTime: {
+          gte: new Date(`1970-01-01T${endTime}:00.000Z`),
+          lt: new Date(`1970-01-01T${endTime}:01.000Z`), // Allow 1 minute tolerance
+        },
+        isAvailable: true,
+      },
+    });
+
+    if (!timeSlot) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected time slot is not available for this court',
+      });
+    }
+
     // Check for conflicting bookings
     const conflictingBooking = await prisma.booking.findFirst({
       where: {
         courtId: parseInt(courtId),
-        bookingDate: new Date(bookingDate),
+        bookingDate: bookingDateObj,
         status: { not: 'cancelled' },
         OR: [
           {
-            AND: [{ startTime: { lte: startTime } }, { endTime: { gt: startTime } }],
+            AND: [
+              { startTime: { lte: new Date(`1970-01-01T${startTime}:00.000Z`) } },
+              { endTime: { gt: new Date(`1970-01-01T${startTime}:00.000Z`) } },
+            ],
           },
           {
-            AND: [{ startTime: { lt: endTime } }, { endTime: { gte: endTime } }],
+            AND: [
+              { startTime: { lt: new Date(`1970-01-01T${endTime}:00.000Z`) } },
+              { endTime: { gte: new Date(`1970-01-01T${endTime}:00.000Z`) } },
+            ],
           },
         ],
       },
@@ -166,26 +243,57 @@ export const createBooking = async (req, res) => {
       });
     }
 
-    // Calculate total amount
-    const totalAmount = court.venue.pricePerHour * (parseInt(duration) / 60);
+    // Calculate duration in minutes
+    const durationInMinutes = (end - start) / (1000 * 60);
 
-    // Create booking
-    const booking = await prisma.booking.create({
-      data: {
-        userId: userId,
-        venueId: parseInt(venueId),
-        courtId: parseInt(courtId),
-        bookingDate: new Date(bookingDate),
-        startTime: startTime,
-        endTime: endTime,
-        duration: parseInt(duration),
-        totalAmount: totalAmount,
-        status: 'pending',
-      },
-      include: {
-        venue: { select: { name: true } },
-        court: { select: { name: true } },
-      },
+    // Use provided total amount or calculate from court price
+    const finalAmount = totalAmount || court.pricePerHour * (durationInMinutes / 60);
+
+    // Create booking with transaction
+    const booking = await prisma.$transaction(async (tx) => {
+      const newBooking = await tx.booking.create({
+        data: {
+          userId: userId,
+          venueId: court.venue.id,
+          courtId: parseInt(courtId),
+          bookingDate: bookingDateObj,
+          startTime: new Date(`1970-01-01T${startTime}:00.000Z`),
+          endTime: new Date(`1970-01-01T${endTime}:00.000Z`),
+          totalAmount: finalAmount,
+          status: 'confirmed', // Auto-confirm for now
+          paymentStatus: 'pending',
+          notes: notes || '',
+          confirmedAt: new Date(),
+        },
+        include: {
+          venue: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              contactPhone: true,
+              contactEmail: true,
+            },
+          },
+          court: {
+            select: {
+              id: true,
+              name: true,
+              sportType: true,
+              pricePerHour: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      return newBooking;
     });
 
     res.status(201).json({
@@ -195,6 +303,15 @@ export const createBooking = async (req, res) => {
     });
   } catch (error) {
     console.error('Create booking error:', error);
+
+    // Handle specific Prisma errors
+    if (error.code === 'P2002') {
+      return res.status(409).json({
+        success: false,
+        message: 'A booking already exists for this time slot',
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to create booking',

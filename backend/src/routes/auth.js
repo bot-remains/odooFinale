@@ -7,6 +7,9 @@ import {
   getProfile,
   updateProfile,
   changePassword,
+  forgotPassword,
+  resetPassword,
+  logout,
 } from '../controllers/authController.js';
 import { userValidation, handleValidationErrors } from '../middleware/validation.js';
 import { authenticateToken } from '../middleware/auth.js';
@@ -18,6 +21,13 @@ router.post('/register', userValidation.register, handleValidationErrors, regist
 router.post('/login', userValidation.login, handleValidationErrors, login);
 router.post('/verify-otp', userValidation.verifyOTP, handleValidationErrors, verifyOTP);
 router.post('/resend-otp', userValidation.resendOTP, handleValidationErrors, resendOTP);
+router.post(
+  '/forgot-password',
+  userValidation.forgotPassword,
+  handleValidationErrors,
+  forgotPassword
+);
+router.post('/reset-password', userValidation.resetPassword, handleValidationErrors, resetPassword);
 
 // Protected routes
 router.get('/me', authenticateToken, getProfile);
@@ -36,5 +46,6 @@ router.put(
   handleValidationErrors,
   changePassword
 );
+router.post('/logout', authenticateToken, logout);
 
 export default router;

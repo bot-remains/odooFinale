@@ -320,7 +320,9 @@ const Index = () => {
   }, [toast]);
 
   // Process venue data safely
-  const venues = Array.isArray(popularVenuesData) ? popularVenuesData : [];
+  const venues = Array.isArray(popularVenuesData?.venues)
+    ? popularVenuesData.venues
+    : [];
   const venuesPerPage = 3;
   const totalPages = Math.ceil(venues.length / venuesPerPage);
   const currentVenues = venues.slice(
@@ -362,19 +364,15 @@ const Index = () => {
     },
   ];
 
-  // Handle sports data safely - combine both approaches
-  const popularSports = (Array.isArray(sportsData) && sportsData.length > 0) 
-    ? sportsData
-        .filter(sport => sport && sport.name) // Filter out sports without name
-        .map(sport => {
-          return {
-            name: sport.name,
-            image: `/${sport.name.toLowerCase().replace(/\s+/g, '_')}.jpg`,
-            id: sport.id || sport.name,
-            description: getSportDescription(sport.name)
-          };
-        }) 
-    : fallbackSports;
+  const popularSports =
+    Array.isArray(sportsData) && sportsData.length > 0
+      ? sportsData.map((sport) => ({
+          name: sport.name,
+          image: `/${sport.name.toLowerCase().replace(/\s+/g, "_")}.jpg`,
+          id: sport.id,
+          description: getSportDescription(sport.name),
+        }))
+      : fallbackSports;
 
   const nextPage = () => {
     if (venues.length > 0) {
@@ -749,9 +747,9 @@ const Index = () => {
                     </h3>
                   </div>
                   <p className="text-green-700 text-sm mb-3">
-                    {venuesData?.venues
+                    {venuesData?.items
                       ? `${
-                          venuesData.venues.filter((v) => v.isApproved).length
+                          venuesData.items.filter((v) => v.isApproved).length
                         } venues available now`
                       : "Checking availability..."}
                   </p>
@@ -932,7 +930,7 @@ const Index = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {currentVenues.map((venue: Venue) => (
+                  {currentVenues.map((venue) => (
                     <Card
                       key={venue.id}
                       className="bg-white border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer group"
@@ -940,6 +938,20 @@ const Index = () => {
                       <CardContent className="p-0">
                         {/* Venue Image */}
                         <div className="aspect-[4/3] bg-gradient-to-br from-gray-100 to-gray-200 rounded-t-lg overflow-hidden relative">
+                          {venue.photos && venue.photos.length > 0 ? (
+                            <img
+                              src={venue.photos[0]}
+                              alt={venue.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                                const nextElement = e.currentTarget
+                                  .nextElementSibling as HTMLElement;
+                                if (nextElement)
+                                  nextElement.style.display = "flex";
+                              }}
+                            />
+                          ) : null}
                           <div className="absolute inset-0 flex items-center justify-center text-gray-500">
                             <div className="text-center">
                               <div className="text-4xl mb-2">🏟️</div>

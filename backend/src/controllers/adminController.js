@@ -40,7 +40,6 @@ export const getAdminDashboard = async (req, res) => {
       }),
     ]);
 
-<<<<<<< HEAD
     // Get system statistics
     const statsQuery = `
       SELECT
@@ -62,22 +61,6 @@ export const getAdminDashboard = async (req, res) => {
 
     const statsResult = await query(statsQuery);
     const stats = statsResult.rows[0];
-=======
-    const stats = {
-      total_customers: totalCustomers,
-      total_owners: totalOwners,
-      total_venues: totalVenues,
-      approved_venues: approvedVenues,
-      pending_venues: pendingVenues,
-      active_courts: activeCourts,
-      total_bookings: totalBookings,
-      confirmed_bookings: confirmedBookings,
-      pending_bookings: pendingBookings,
-      cancelled_bookings: cancelledBookings,
-      total_reviews: totalReviews,
-      total_revenue: revenueResult._sum.totalAmount || 0,
-    };
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
 
     // Get monthly booking trends (last 12 months)
     const twelveMonthsAgo = new Date();
@@ -164,7 +147,7 @@ export const getAdminDashboard = async (req, res) => {
 
     // Get recent bookings (last 10)
     const recentBookingsQuery = `
-      SELECT 
+      SELECT
         b.id,
         b.booking_date,
         b.start_time,
@@ -189,7 +172,7 @@ export const getAdminDashboard = async (req, res) => {
 
     // Get top venues by booking count
     const topVenuesQuery = `
-      SELECT 
+      SELECT
         v.id,
         v.name,
         v.location,
@@ -214,15 +197,10 @@ export const getAdminDashboard = async (req, res) => {
           ...stats,
           total_revenue: parseFloat(stats.total_revenue || 0),
         },
-<<<<<<< HEAD
         trends: trendResult.rows,
         recentActivities: activitiesResult.rows,
         recentBookings: recentBookingsResult.rows,
         topVenues: topVenuesResult.rows,
-=======
-        trends: trendResult,
-        recentActivities: activities,
->>>>>>> 1bb060449e74938b0bb2c1e3a2ca98430d3c38c4
       },
     });
   } catch (error) {
