@@ -17,17 +17,23 @@ const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigate = useNavigate();
 
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, logout: authLogout } = useAuth();
   const { data: unreadCount = 0 } = useUnreadNotificationCount({
     enabled: isAuthenticated && (user?.role === 'admin' || user?.role === 'facility_owner')
   });
-  const logout = useLogout();
+  const logoutMutation = useLogout();
 
   const handleLogout = () => {
-    logout.mutate(undefined, {
+    logoutMutation.mutate(undefined, {
       onSuccess: () => {
+        authLogout(); // Update auth context state
         navigate("/");
       },
+      onError: () => {
+        // Even if server logout fails, clear local state
+        authLogout();
+        navigate("/");
+      }
     });
   };
   return (
@@ -89,10 +95,10 @@ const Header = () => {
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={handleLogout}
-                    disabled={logout.isPending}
+                    disabled={logoutMutation.isPending}
                   >
                     <LogOut className="mr-2 h-4 w-4" />
-                    {logout.isPending ? "Logging out..." : "Logout"}
+                    {logoutMutation.isPending ? "Logging out..." : "Logout"}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -173,10 +179,10 @@ const Header = () => {
                     variant="ghost"
                     className="w-full justify-start"
                     onClick={handleLogout}
-                    disabled={logout.isPending}
+                    disabled={logoutMutation.isPending}
                   >
                     <LogOut className="mr-2 h-4 w-4" />
-                    {logout.isPending ? "Logging out..." : "Logout"}
+                    {logoutMutation.isPending ? "Logging out..." : "Logout"}
                   </Button>
                 </>
               ) : (

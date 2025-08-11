@@ -47,10 +47,6 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
-
-// Rate limiting for API routes
-app.use('/api/', apiLimiter);
-
 // Compression middleware
 app.use(compression());
 

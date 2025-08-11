@@ -58,7 +58,7 @@ const Login = () => {
             redirectPath = "/owner/dashboard";
             break;
           default:
-            redirectPath = "/venues";
+            redirectPath = "/";
         }
       }
 
