@@ -24,6 +24,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 
 // Dashboard data interfaces
@@ -62,6 +63,8 @@ interface DashboardData {
 }
 
 const OwnerDashboard = () => {
+  const navigate = useNavigate();
+
   const { data: dashboardData, isLoading: dashboardLoading } =
     useVenueManagementDashboard();
   const { data: venuesData, isLoading: venuesLoading } = useMyVenues();
@@ -145,7 +148,10 @@ const OwnerDashboard = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card
+          className="hover:shadow-md transition-shadow cursor-pointer"
+          onClick={() => navigate("/owner/courts")}
+        >
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -161,6 +167,9 @@ const OwnerDashboard = () => {
                 )}
                 <p className="text-xs text-gray-500 mt-1">
                   {stats.active_courts || 0} active
+                </p>
+                <p className="text-xs text-blue-600 mt-1 font-medium">
+                  Click to manage →
                 </p>
               </div>
               <div className="text-2xl">🏟️</div>

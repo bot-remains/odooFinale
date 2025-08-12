@@ -17,7 +17,8 @@ import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
 import UserProfile from "./pages/user/Profile";
 import MyBookings from "./pages/user/MyBookings";
-import BookingPage from "./pages/booking/BookingPage.tsx";
+import VenueBooking from "./pages/booking/VenueBooking";
+import CourtBooking from "./pages/booking/CourtBooking";
 import OwnerDashboard from "./pages/owner/Dashboard";
 import FacilityManagement from "./pages/owner/FacilityManagement";
 import TimeSlots from "./pages/owner/TimeSlots";
@@ -27,6 +28,7 @@ import CreateVenue from "./pages/owner/CreateVenue";
 import OwnerVenueDetails from "./pages/owner/VenueDetails";
 import EditVenue from "./pages/owner/EditVenue";
 import VenueBookings from "./pages/owner/VenueBookings";
+import CourtManagement from "./pages/owner/CourtManagement";
 import AdminDashboard from "./pages/admin/Dashboard";
 import FacilityApproval from "./pages/admin/FacilityApproval";
 import Users from "./pages/admin/Users";
@@ -79,8 +81,9 @@ const App = () => (
                       <Route path="/venue/:id" element={<VenueDetails />} />
                       <Route
                         path="/booking/:venueId"
-                        element={<BookingPage />}
+                        element={<VenueBooking />}
                       />
+                      <Route path="/booking/court" element={<CourtBooking />} />
 
                       <Route
                         path="/facility-provider"
@@ -180,6 +183,14 @@ const App = () => (
                         element={
                           <ProtectedRoute>
                             <BookingOverview />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/owner/courts"
+                        element={
+                          <ProtectedRoute>
+                            <CourtManagement />
                           </ProtectedRoute>
                         }
                       />

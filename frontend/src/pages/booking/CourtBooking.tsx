@@ -38,13 +38,13 @@ import {
 } from "lucide-react";
 
 const CourtBooking = () => {
-  const { venueId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
 
-  // URL parameters
+  // URL parameters from search params
+  const venueId = searchParams.get("venueId");
   const courtId = searchParams.get("courtId");
 
   // State
@@ -52,23 +52,25 @@ const CourtBooking = () => {
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>("");
   const [isBooking, setIsBooking] = useState(false);
 
+  // Parse and validate IDs
+  const venueIdNum = venueId ? parseInt(venueId) : null;
+  const courtIdNum = courtId ? parseInt(courtId) : null;
+
   // API calls
   const {
     data: venue,
     isLoading: venueLoading,
     error: venueError,
-  } = useVenueDetails(parseInt(venueId || "0"));
+  } = useVenueDetails(venueIdNum || 0);
   const {
     data: availableSlots,
     isLoading: slotsLoading,
     refetch: refetchTimeSlots,
-  } = useAvailableTimeSlots(parseInt(courtId || "0"), selectedDate);
+  } = useAvailableTimeSlots(courtIdNum || 0, selectedDate);
   const createBookingMutation = useCreateBooking();
 
   // Get the selected court from venue data
-  const selectedCourt = venue?.courts?.find(
-    (c) => c.id === parseInt(courtId || "0")
-  );
+  const selectedCourt = venue?.courts?.find((c) => c.id === courtIdNum);
 
   // Set default date to today
   useEffect(() => {
@@ -78,14 +80,14 @@ const CourtBooking = () => {
 
   // Validation
   useEffect(() => {
-    if (!courtId) {
+    if (!venueId || !courtId) {
       toast({
         title: "Invalid Request",
-        description: "Court ID is required for booking",
+        description: "Venue ID and Court ID are required for booking",
         variant: "destructive",
       });
     }
-  }, [courtId, toast]);
+  }, [venueId, courtId, toast]);
 
   // Debug: Log available slots when they change
   useEffect(() => {
@@ -179,7 +181,7 @@ const CourtBooking = () => {
 
       // Navigate to user bookings after a delay
       setTimeout(() => {
-        navigate("/user/bookings");
+        navigate("/profile");
       }, 1500);
     } catch (error: unknown) {
       let errorMessage = "Failed to book the court. Please try again.";
@@ -214,6 +216,24 @@ const CourtBooking = () => {
       isAvailable: slot.isAvailable,
     }));
   };
+
+  // Early validation for required parameters
+  if (!venueId || !courtId || !venueIdNum || !courtIdNum) {
+    return (
+      <div className="container py-10">
+        <div className="text-center py-20">
+          <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+          <h2 className="text-xl font-semibold mb-2">Invalid Parameters</h2>
+          <p className="text-muted-foreground mb-4">
+            Valid venue ID and court ID are required for booking.
+          </p>
+          <Button asChild>
+            <Link to="/venues">← Back to Venues</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (venueLoading) {
     return (

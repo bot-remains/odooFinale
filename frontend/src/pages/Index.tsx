@@ -33,15 +33,12 @@ import {
   Zap,
   Shield,
   TrendingDown,
+  AlertCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import {
-  useVenues,
-  usePopularVenues,
-  useSports,
-} from "@/services/venueService";
+import { usePopularVenues, useSports } from "@/services/venueService";
 import {
   useUpcomingBookings,
   useBookingHistory,
@@ -126,16 +123,31 @@ const Index = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // API hooks
-  const {
-    data: venuesData,
-    isLoading: venuesLoading,
-    error: venuesError,
-  } = useVenues({
-    location: searchCity || undefined,
-    limit: 20,
-    offset: 0,
-  });
+  // Direct API call for venues
+  const [venuesData, setVenuesData] = useState(null);
+  const [venuesLoading, setVenuesLoading] = useState(true);
+  const [venuesError, setVenuesError] = useState(null);
+
+  useEffect(() => {
+    const fetchVenues = async () => {
+      try {
+        setVenuesLoading(true);
+        const response = await fetch(
+          "http://localhost:3000/api/public/venues/"
+        );
+        const data = await response.json();
+        setVenuesData(data.data);
+        setVenuesError(null);
+      } catch (error) {
+        setVenuesError(error);
+        setVenuesData(null);
+      } finally {
+        setVenuesLoading(false);
+      }
+    };
+
+    fetchVenues();
+  }, []);
 
   const { data: popularVenuesData, isLoading: popularVenuesLoading } =
     usePopularVenues("rating", 12);
@@ -363,18 +375,19 @@ const Index = () => {
   ];
 
   // Handle sports data safely - combine both approaches
-  const popularSports = (Array.isArray(sportsData) && sportsData.length > 0) 
-    ? sportsData
-        .filter(sport => sport && sport.name) // Filter out sports without name
-        .map(sport => {
-          return {
-            name: sport.name,
-            image: `/${sport.name.toLowerCase().replace(/\s+/g, '_')}.jpg`,
-            id: sport.id || sport.name,
-            description: getSportDescription(sport.name)
-          };
-        }) 
-    : fallbackSports;
+  const popularSports =
+    Array.isArray(sportsData) && sportsData.length > 0
+      ? sportsData
+          .filter((sport) => sport && sport.name) // Filter out sports without name
+          .map((sport) => {
+            return {
+              name: sport.name,
+              image: `/${sport.name.toLowerCase().replace(/\s+/g, "_")}.jpg`,
+              id: sport.id || sport.name,
+              description: getSportDescription(sport.name),
+            };
+          })
+      : fallbackSports;
 
   const nextPage = () => {
     if (venues.length > 0) {
@@ -914,6 +927,17 @@ const Index = () => {
                 <Link to="/venues">See all venues →</Link>
               </Button>
             </div>
+
+            {/* Fallback Message for Index Page */}
+            {venuesData?.fallbackMessage && (
+              <Alert className="mb-6 bg-blue-50 border-blue-200">
+                <AlertCircle className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-blue-800">
+                  {venuesData.fallbackMessage}
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="relative">
               {venuesLoading ? (
                 <div className="flex items-center justify-center py-8">

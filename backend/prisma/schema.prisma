@@ -37,6 +37,8 @@ model User {
   reviewHelpful             ReviewHelpful[]
   approvedVenues            Venue[]                     @relation("VenueApprovedBy")
   rejectedVenues            Venue[]                     @relation("VenueRejectedBy")
+  reports                   Report[]                    @relation("UserReports")
+  reviewedReports           Report[]                    @relation("ReviewedReports")
 
   @@index([email])
   @@index([role])
@@ -73,6 +75,7 @@ model Venue {
   bookings          Booking[]
   reviews           Review[]
   timeSlots         TimeSlot[]
+  reports           Report[]  @relation("VenueReports")
 
   @@index([ownerId])
   @@index([isApproved])
@@ -88,6 +91,7 @@ model Court {
   sportType     String    @map("sport_type") @db.VarChar(100)
   pricePerHour  Decimal   @map("price_per_hour") @db.Decimal(8, 2)
   description   String?
+  capacity      Int       @default(10)
   photos        String[]
   amenities     String[]
   isActive      Boolean   @default(true) @map("is_active")
@@ -278,4 +282,29 @@ model NotificationPreference {
 
   @@index([userId])
   @@map("notification_preferences")
+}
+
+model Report {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  venueId     Int      @map("venue_id")
+  reason      String   @db.VarChar(50) // 'inappropriate_content', 'false_information', 'poor_service', 'safety_concerns', 'other'
+  description String   @db.Text
+  status      String   @default("pending") @db.VarChar(20) // 'pending', 'reviewed', 'resolved', 'dismissed'
+  adminNotes  String?  @map("admin_notes") @db.Text
+  reviewedBy  Int?     @map("reviewed_by")
+  reviewedAt  DateTime? @map("reviewed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user        User     @relation("UserReports", fields: [userId], references: [id], onDelete: Cascade)
+  venue       Venue    @relation("VenueReports", fields: [venueId], references: [id], onDelete: Cascade)
+  reviewer    User?    @relation("ReviewedReports", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([venueId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("reports")
 }

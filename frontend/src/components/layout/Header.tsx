@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Menu, X, User, LogOut, Bell, Calendar } from "lucide-react";
+import { Menu, X, User, LogOut, Bell, Calendar, Building } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -71,6 +71,13 @@ const Header = () => {
                 >
                   <Calendar className="h-4 w-4" />
                   <span className="font-bold">My Venues</span>
+                </Link>
+                <Link
+                  to="/owner/courts"
+                  className="text-foreground/60 hover:text-foreground transition-colors flex items-center space-x-2"
+                >
+                  <Building className="h-4 w-4" />
+                  <span className="font-bold">Courts</span>
                 </Link>
                 <Link
                   to="/owner/bookings"

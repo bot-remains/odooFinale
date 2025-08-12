@@ -11,6 +11,10 @@ import {
   VenueReviewAction,
   SystemReport,
   RecentActivity,
+  VenueReport,
+  VenueReportStatus,
+  ReportStats,
+  UpdateReportStatusRequest,
 } from "@/lib/types";
 
 // API calls
@@ -199,6 +203,49 @@ const adminApi = {
     );
     return response.data.data!;
   },
+
+  // Venue Report endpoints
+  getVenueReports: async (
+    params: {
+      status?: VenueReportStatus | "all";
+      sortBy?: "createdAt" | "status" | "reason";
+      sortOrder?: "asc" | "desc";
+      limit?: number;
+      offset?: number;
+    } = {}
+  ): Promise<PaginatedResponse<VenueReport>> => {
+    const response = await api.get<
+      ApiResponse<{
+        reports: VenueReport[];
+        pagination: {
+          total: number;
+          limit: number;
+          offset: number;
+          hasNext: boolean;
+        };
+      }>
+    >("/admin/venue-reports", { params });
+
+    const backendData = response.data.data!;
+    return {
+      items: backendData.reports,
+      pagination: backendData.pagination,
+    };
+  },
+
+  updateReportStatus: async (
+    reportId: number,
+    data: UpdateReportStatusRequest
+  ): Promise<void> => {
+    await api.patch(`/admin/venue-reports/${reportId}/status`, data);
+  },
+
+  getReportStats: async (): Promise<ReportStats> => {
+    const response = await api.get<ApiResponse<ReportStats>>(
+      "/admin/venue-reports/stats"
+    );
+    return response.data.data!;
+  },
 };
 
 // Chart data interfaces
@@ -313,6 +360,30 @@ export const useAdminChartData = (
   });
 };
 
+export const useVenueReports = (
+  params: {
+    status?: VenueReportStatus | "all";
+    sortBy?: "createdAt" | "status" | "reason";
+    sortOrder?: "asc" | "desc";
+    limit?: number;
+    offset?: number;
+  } = {}
+) => {
+  return useQuery({
+    queryKey: ["admin", "venueReports", params],
+    queryFn: () => adminApi.getVenueReports(params),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
+};
+
+export const useReportStats = () => {
+  return useQuery({
+    queryKey: ["admin", "reportStats"],
+    queryFn: adminApi.getReportStats,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+};
+
 export const useUpdateUserStatus = () => {
   const queryClient = useQueryClient();
 
@@ -416,6 +487,30 @@ export const useActivateVenue = () => {
         queryKey: ["admin", "venues", "details", venueId],
       });
       queryClient.invalidateQueries({ queryKey: ["venues"] }); // Public venue queries
+    },
+    onError: (error) => {
+      const apiError = handleApiError(error);
+      throw apiError;
+    },
+  });
+};
+
+export const useUpdateReportStatus = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      reportId,
+      data,
+    }: {
+      reportId: number;
+      data: UpdateReportStatusRequest;
+    }) => adminApi.updateReportStatus(reportId, data),
+    onSuccess: () => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: ["admin", "venueReports"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "reportStats"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
     },
     onError: (error) => {
       const apiError = handleApiError(error);

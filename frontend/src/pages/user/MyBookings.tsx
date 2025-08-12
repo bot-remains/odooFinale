@@ -4,20 +4,69 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useBookings } from "@/services/bookingService";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { useUserBookings, useCancelBooking } from "@/services/bookingService";
 import { useState } from "react";
-import { Calendar, Clock, MapPin } from "lucide-react";
+import { Calendar, Clock, MapPin, AlertTriangle, Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const MyBookings = () => {
   const [activeTab, setActiveTab] = useState("all");
+  const [cancellingBookingId, setCancellingBookingId] = useState<number | null>(
+    null
+  );
+  const [cancelReason, setCancelReason] = useState("");
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const { toast } = useToast();
 
   // Get real booking data from API
-  const { data: bookingsData, isLoading: bookingsLoading } = useBookings({
+  const { data: bookingsData, isLoading: bookingsLoading } = useUserBookings({
     limit: 50,
     offset: 0,
   });
 
+  const cancelBookingMutation = useCancelBooking();
+
   const bookings = bookingsData?.items || [];
+
+  const handleCancelBooking = (bookingId: number) => {
+    setCancellingBookingId(bookingId);
+    setShowCancelDialog(true);
+  };
+
+  const confirmCancelBooking = async () => {
+    if (!cancellingBookingId) return;
+
+    try {
+      await cancelBookingMutation.mutateAsync({
+        bookingId: cancellingBookingId,
+        reason: cancelReason,
+      });
+
+      toast({
+        title: "Booking Cancelled",
+        description: "Your booking has been cancelled successfully.",
+      });
+
+      setShowCancelDialog(false);
+      setCancellingBookingId(null);
+      setCancelReason("");
+    } catch (error) {
+      toast({
+        title: "Cancellation Failed",
+        description: "Failed to cancel booking. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Filter bookings based on active tab
   const filteredBookings = bookings.filter((booking) => {
@@ -177,8 +226,21 @@ const MyBookings = () => {
                 <div className="flex gap-2 mt-4">
                   {booking.status === "confirmed" &&
                     new Date(booking.bookingDate) >= new Date() && (
-                      <Button variant="outline" size="sm">
-                        Cancel Booking
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCancelBooking(booking.id)}
+                        disabled={cancelBookingMutation.isPending}
+                      >
+                        {cancelBookingMutation.isPending &&
+                        cancellingBookingId === booking.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Cancelling...
+                          </>
+                        ) : (
+                          "Cancel Booking"
+                        )}
                       </Button>
                     )}
                   {booking.status === "completed" && (
@@ -195,6 +257,61 @@ const MyBookings = () => {
           ))
         )}
       </div>
+
+      {/* Cancel Booking Dialog */}
+      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Booking</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                <p className="text-sm text-yellow-800">
+                  Are you sure you want to cancel this booking? This action
+                  cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="cancel-reason">
+                Reason for cancellation (optional)
+              </Label>
+              <Textarea
+                id="cancel-reason"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Please provide a reason for cancellation..."
+                className="mt-1"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setShowCancelDialog(false)}
+                disabled={cancelBookingMutation.isPending}
+              >
+                Keep Booking
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmCancelBooking}
+                disabled={cancelBookingMutation.isPending}
+              >
+                {cancelBookingMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Cancelling...
+                  </>
+                ) : (
+                  "Cancel Booking"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

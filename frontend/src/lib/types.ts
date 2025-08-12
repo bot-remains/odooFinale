@@ -5,9 +5,13 @@ export interface User {
   id: number;
   name: string;
   email: string;
-  phone: string;
   role: UserRole;
   isActive: boolean;
+  isVerified: boolean;
+  avatar?: string | null;
+  lastLogin?: string | null;
+  suspendedAt?: string | null;
+  suspensionReason?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -26,7 +30,6 @@ export interface RegisterRequest {
   name: string;
   email: string;
   password: string;
-  phone: string;
   role?: UserRole;
 }
 
@@ -428,4 +431,70 @@ export interface AvailabilityCheck {
 export interface PopularVenue extends Venue {
   bookingCount: number;
   popularityScore: number;
+}
+
+// Venue Report types
+export type VenueReportStatus =
+  | "pending"
+  | "reviewed"
+  | "resolved"
+  | "dismissed";
+
+export interface VenueReport {
+  id: number;
+  reason: string;
+  description: string;
+  status: VenueReportStatus;
+  admin_notes?: string;
+  created_at: string;
+  reviewed_at?: string;
+  user: {
+    id: number;
+    name: string;
+    email: string;
+  };
+  venue: {
+    id: number;
+    name: string;
+    location: string;
+    owner_name: string;
+    owner_email: string;
+  };
+  reviewed_by?: string;
+}
+
+export interface ReportStats {
+  total_reports: number;
+  pending_reports: number;
+  reviewed_reports: number;
+  resolved_reports: number;
+  dismissed_reports: number;
+  reports_by_reason: {
+    reason: string;
+    count: number;
+  }[];
+  recent_reports: {
+    id: number;
+    reason: string;
+    user_name: string;
+    venue_name: string;
+    status: VenueReportStatus;
+    created_at: string;
+  }[];
+}
+
+export interface SubmitVenueReportRequest {
+  reason:
+    | "inappropriate_content"
+    | "false_information"
+    | "safety_concerns"
+    | "poor_service"
+    | "facility_issues"
+    | "other";
+  description: string;
+}
+
+export interface UpdateReportStatusRequest {
+  status: VenueReportStatus;
+  adminNotes?: string;
 }

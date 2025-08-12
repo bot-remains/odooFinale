@@ -14,6 +14,11 @@ import {
   updateCourt,
   deleteCourt,
   toggleCourtStatus,
+  getAllOwnerCourts,
+  createOwnerCourt,
+  updateOwnerCourt,
+  deleteOwnerCourt,
+  toggleOwnerCourtStatus,
 } from '../controllers/courtController.js';
 import {
   getTimeSlots,
@@ -36,6 +41,74 @@ router.use(requireRole(['facility_owner', 'admin']));
 
 // DASHBOARD
 router.get('/dashboard', getDashboard);
+
+// COURTS MANAGEMENT (All courts for the facility owner)
+router.get('/courts', getAllOwnerCourts);
+
+// Create court (general endpoint)
+router.post(
+  '/courts',
+  [
+    body('venueId').isInt({ min: 1 }).withMessage('Valid venue ID is required'),
+    body('name')
+      .trim()
+      .isLength({ min: 3, max: 255 })
+      .withMessage('Court name must be between 3 and 255 characters'),
+    body('sportType').trim().isLength({ min: 1 }).withMessage('Sport type is required'),
+    body('description')
+      .optional()
+      .trim()
+      .isLength({ max: 1000 })
+      .withMessage('Description must not exceed 1000 characters'),
+    body('pricePerHour')
+      .isFloat({ min: 0.01 })
+      .withMessage('Price per hour must be a positive number'),
+    body('capacity').isInt({ min: 1 }).withMessage('Capacity must be a positive integer'),
+  ],
+  createOwnerCourt
+);
+
+// Update court (general endpoint)
+router.put(
+  '/courts/:courtId',
+  [
+    param('courtId').isInt({ min: 1 }).withMessage('Invalid court ID'),
+    body('name')
+      .optional()
+      .trim()
+      .isLength({ min: 3, max: 255 })
+      .withMessage('Court name must be between 3 and 255 characters'),
+    body('sportType').optional().trim().isLength({ min: 1 }).withMessage('Sport type is required'),
+    body('description')
+      .optional()
+      .trim()
+      .isLength({ max: 1000 })
+      .withMessage('Description must not exceed 1000 characters'),
+    body('pricePerHour')
+      .optional()
+      .isFloat({ min: 0.01 })
+      .withMessage('Price per hour must be a positive number'),
+    body('capacity')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Capacity must be a positive integer'),
+  ],
+  updateOwnerCourt
+);
+
+// Delete court (general endpoint)
+router.delete(
+  '/courts/:courtId',
+  [param('courtId').isInt({ min: 1 }).withMessage('Invalid court ID')],
+  deleteOwnerCourt
+);
+
+// Toggle court status (general endpoint)
+router.patch(
+  '/courts/:courtId/toggle-status',
+  [param('courtId').isInt({ min: 1 }).withMessage('Invalid court ID')],
+  toggleOwnerCourtStatus
+);
 
 // VENUE MANAGEMENT
 router.get('/venues', getVenues);

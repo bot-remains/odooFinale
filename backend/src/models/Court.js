@@ -6,7 +6,9 @@ class Court {
     this.venueId = courtData.venueId;
     this.name = courtData.name;
     this.sportType = courtData.sportType;
+    this.description = courtData.description;
     this.pricePerHour = courtData.pricePerHour;
+    this.capacity = courtData.capacity;
     this.photos = courtData.photos;
     this.amenities = courtData.amenities;
     this.isActive = courtData.isActive;
@@ -14,20 +16,32 @@ class Court {
     this.updatedAt = courtData.updatedAt;
 
     // Related data
+    this.venue = courtData.venue;
     this.venueName = courtData.venue?.name;
     this.venueLocation = courtData.venue?.location;
   }
 
   // Create a new court
   static async create(courtData) {
-    const { venueId, name, sportType, pricePerHour, photos = [], amenities = [] } = courtData;
+    const {
+      venueId,
+      name,
+      sportType,
+      description = '',
+      pricePerHour,
+      capacity = 10,
+      photos = [],
+      amenities = [],
+    } = courtData;
 
     const court = await prisma.court.create({
       data: {
         venueId,
         name,
         sportType,
+        description,
         pricePerHour,
+        capacity,
         photos,
         amenities,
       },
@@ -36,7 +50,9 @@ class Court {
         venueId: true,
         name: true,
         sportType: true,
+        description: true,
         pricePerHour: true,
+        capacity: true,
         photos: true,
         amenities: true,
         isActive: true,
@@ -168,6 +184,114 @@ class Court {
     return courts.map((court) => new Court(court));
   }
 
+  // Search courts with filters and pagination (for facility owners)
+  static async searchWithPagination(params = {}) {
+    const {
+      ownerId,
+      search,
+      sportType,
+      isActive,
+      venueId,
+      sortBy = 'name',
+      sortOrder = 'asc',
+      limit = 10,
+      offset = 0,
+    } = params;
+
+    // Build where clause
+    const where = {
+      venue: {
+        ownerId: parseInt(ownerId),
+      },
+    };
+
+    if (venueId) {
+      where.venueId = parseInt(venueId);
+    }
+
+    if (sportType) {
+      where.sportType = sportType;
+    }
+
+    if (isActive !== undefined) {
+      where.isActive = isActive;
+    }
+
+    if (search) {
+      where.OR = [
+        {
+          name: {
+            contains: search,
+            mode: 'insensitive',
+          },
+        },
+        {
+          venue: {
+            name: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
+        },
+      ];
+    }
+
+    // Build orderBy clause
+    let orderBy = {};
+    switch (sortBy) {
+      case 'name':
+        orderBy = { name: sortOrder };
+        break;
+      case 'sportType':
+        orderBy = { sportType: sortOrder };
+        break;
+      case 'pricePerHour':
+        orderBy = { pricePerHour: sortOrder };
+        break;
+      case 'createdAt':
+        orderBy = { createdAt: sortOrder };
+        break;
+      default:
+        orderBy = { name: 'asc' };
+    }
+
+    // Get total count and courts
+    const [total, courts] = await Promise.all([
+      prisma.court.count({ where }),
+      prisma.court.findMany({
+        where,
+        select: {
+          id: true,
+          venueId: true,
+          name: true,
+          sportType: true,
+          pricePerHour: true,
+          description: true,
+          capacity: true,
+          photos: true,
+          amenities: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+          venue: {
+            select: {
+              name: true,
+              location: true,
+            },
+          },
+        },
+        orderBy,
+        take: parseInt(limit),
+        skip: parseInt(offset),
+      }),
+    ]);
+
+    return {
+      courts: courts.map((court) => new Court(court)),
+      total,
+    };
+  }
+
   // Search courts with filters
   static async search(filters = {}, limit = 20, offset = 0) {
     const where = {
@@ -250,7 +374,16 @@ class Court {
 
   // Update court
   async update(updateData) {
-    const allowedFields = ['name', 'sportType', 'pricePerHour', 'photos', 'amenities', 'isActive'];
+    const allowedFields = [
+      'name',
+      'sportType',
+      'description',
+      'pricePerHour',
+      'capacity',
+      'photos',
+      'amenities',
+      'isActive',
+    ];
 
     const prismaUpdateData = {};
 
@@ -272,7 +405,9 @@ class Court {
         venueId: true,
         name: true,
         sportType: true,
+        description: true,
         pricePerHour: true,
+        capacity: true,
         photos: true,
         amenities: true,
         isActive: true,
@@ -444,12 +579,15 @@ class Court {
       venueId: this.venueId,
       name: this.name,
       sportType: this.sportType,
+      description: this.description,
       pricePerHour: parseFloat(this.pricePerHour),
+      capacity: this.capacity,
       photos: this.photos,
       amenities: this.amenities,
       isActive: this.isActive,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
+      venue: this.venue,
       venueName: this.venueName,
       venueLocation: this.venueLocation,
     };

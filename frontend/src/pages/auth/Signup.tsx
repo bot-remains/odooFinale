@@ -33,7 +33,6 @@ const Signup = () => {
     email: "",
     password: "",
     confirmPassword: "",
-    phone: "", // Add phone field for API compatibility
   });
 
   // Error state
@@ -196,7 +195,6 @@ const Signup = () => {
           name: formData.fullName,
           email: formData.email,
           password: formData.password,
-          phone: formData.phone || "000-000-0000", // Use provided phone or default
           role: (formData.role === "owner" ? "facility_owner" : "user") as
             | "user"
             | "facility_owner",

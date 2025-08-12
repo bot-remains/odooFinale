@@ -39,6 +39,8 @@ interface BackendVenuesResponse {
     offset: number;
     hasNext: boolean;
   };
+  fallbackMessage?: string; // Message when showing venues from other cities
+  searchedCity?: string; // The city that was originally searched
 }
 
 // Public API calls
@@ -118,7 +120,9 @@ const publicVenueApi = {
 
   getSportPricing: async (venueId: number, sportType: string) => {
     const response = await api.get<ApiResponse<any>>(
-      `/public/venues/${venueId}/sports/${encodeURIComponent(sportType)}/pricing`
+      `/public/venues/${venueId}/sports/${encodeURIComponent(
+        sportType
+      )}/pricing`
     );
     return response.data.data!;
   },

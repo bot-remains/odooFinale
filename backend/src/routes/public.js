@@ -8,8 +8,9 @@ import {
   getAvailableSports,
   getSportPricing,
   getAvailableTimeSlots,
+  submitVenueReport,
 } from '../controllers/publicController.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -77,10 +78,7 @@ router.get('/sports', getAvailableSports);
 // Get sport pricing for specific venue and sport
 router.get(
   '/venues/:venueId/sports/:sportType/pricing',
-  [
-    param('venueId').isInt(),
-    param('sportType').isString().trim(),
-  ],
+  [param('venueId').isInt(), param('sportType').isString().trim()],
   getSportPricing
 );
 
@@ -92,6 +90,31 @@ router.get(
     query('date').isDate({ format: 'YYYY-MM-DD' }).withMessage('Date must be in YYYY-MM-DD format'),
   ],
   getAvailableTimeSlots
+);
+
+// Submit venue report (requires authentication)
+router.post(
+  '/venues/:venueId/report',
+  authenticate,
+  [
+    param('venueId').isInt(),
+    body('reason')
+      .isIn([
+        'inappropriate_content',
+        'false_information',
+        'safety_concerns',
+        'poor_service',
+        'facility_issues',
+        'other',
+      ])
+      .withMessage('Invalid report reason'),
+    body('description')
+      .isString()
+      .trim()
+      .isLength({ min: 10, max: 1000 })
+      .withMessage('Description must be between 10 and 1000 characters'),
+  ],
+  submitVenueReport
 );
 
 export default router;

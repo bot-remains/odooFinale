@@ -1,3 +1,4 @@
+import { validationResult } from 'express-validator';
 import prisma from '../config/prisma.js';
 
 // Helper function to enrich venue data with pricing and sports information
@@ -104,7 +105,7 @@ export const getAllVenues = async (req, res) => {
     }
 
     if (city) {
-      whereClause.city = { contains: city, mode: 'insensitive' };
+      whereClause.location = { contains: city, mode: 'insensitive' };
     }
 
     if (sport) {
@@ -267,16 +268,140 @@ export const getAllVenues = async (req, res) => {
       where: whereClause,
     });
 
+    // Fallback logic: if no venues found for specific city, show venues from any city
+    let fallbackMessage = null;
+    let fallbackVenues = finalVenues;
+    let fallbackTotal = total;
+
+    if (city && finalVenues.length === 0 && total === 0) {
+      console.log(`No venues found for city: ${city}. Searching for venues from any city...`);
+
+      // Create a new query without city filter for fallback
+      const fallbackWhereClause = { ...whereClause };
+      delete fallbackWhereClause.location; // Remove location filter
+
+      const fallbackVenueResults = await prisma.venue.findMany({
+        where: fallbackWhereClause,
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          address: true,
+          location: true,
+          rating: true,
+          totalReviews: true,
+          contactEmail: true,
+          contactPhone: true,
+          isApproved: true,
+          createdAt: true,
+          updatedAt: true,
+          courts: {
+            where: { isActive: true },
+            select: {
+              id: true,
+              name: true,
+              sportType: true,
+            },
+          },
+          _count: {
+            select: {
+              reviews: true,
+            },
+          },
+        },
+        orderBy: orderBy,
+        take: parseInt(limit),
+        skip: parseInt(offset),
+      });
+
+      if (fallbackVenueResults.length > 0) {
+        // Process fallback venues same way as original venues
+        const fallbackVenueIds = fallbackVenueResults.map((v) => v.id);
+        const fallbackExtraData = await prisma.$queryRaw`
+          SELECT id, amenities, photos FROM venues WHERE id = ANY(${fallbackVenueIds})
+        `;
+
+        const fallbackVenuesWithExtras = fallbackVenueResults.map((venue) => {
+          const extraInfo = fallbackExtraData.find((a) => a.id === venue.id);
+          let amenities = [];
+          let photos = [];
+
+          if (extraInfo) {
+            try {
+              if (typeof extraInfo.amenities === 'string') {
+                amenities = JSON.parse(extraInfo.amenities);
+                if (!Array.isArray(amenities)) {
+                  amenities = [extraInfo.amenities];
+                }
+              } else if (Array.isArray(extraInfo.amenities)) {
+                amenities = extraInfo.amenities;
+              }
+            } catch (error) {
+              console.warn('Failed to parse amenities for fallback venue', venue.id, error);
+              amenities = [];
+            }
+
+            try {
+              if (typeof extraInfo.photos === 'string') {
+                photos = JSON.parse(extraInfo.photos);
+                if (!Array.isArray(photos)) {
+                  photos = [extraInfo.photos];
+                }
+              } else if (Array.isArray(extraInfo.photos)) {
+                photos = extraInfo.photos;
+              }
+            } catch (error) {
+              console.warn('Failed to parse photos for fallback venue', venue.id, error);
+              photos = [];
+            }
+          }
+
+          return { ...venue, amenities, photos };
+        });
+
+        const fallbackEnrichedVenues = await enrichVenueData(fallbackVenuesWithExtras);
+
+        // Apply price sorting for fallback venues if requested
+        if (sortBy === 'price') {
+          fallbackVenues = fallbackEnrichedVenues.sort((a, b) => {
+            const priceA = a.min_price;
+            const priceB = b.min_price;
+
+            if (priceA === null && priceB === null) return 0;
+            if (priceA === null) return 1;
+            if (priceB === null) return -1;
+
+            if (sortOrder === 'asc') {
+              return priceA - priceB;
+            } else {
+              return priceB - priceA;
+            }
+          });
+        } else {
+          fallbackVenues = fallbackEnrichedVenues;
+        }
+
+        fallbackTotal = await prisma.venue.count({
+          where: fallbackWhereClause,
+        });
+
+        fallbackMessage = `No venues found in ${city}. Showing venues from other cities:`;
+        console.log(`Found ${fallbackVenues.length} fallback venues from other cities`);
+      }
+    }
+
     res.json({
       success: true,
       data: {
-        venues: finalVenues,
+        venues: fallbackVenues,
         pagination: {
-          total,
+          total: fallbackTotal,
           limit: parseInt(limit),
           offset: parseInt(offset),
-          hasNext: parseInt(offset) + parseInt(limit) < total,
+          hasNext: parseInt(offset) + parseInt(limit) < fallbackTotal,
         },
+        fallbackMessage, // Include fallback message to inform frontend
+        searchedCity: city, // Include searched city for reference
       },
     });
   } catch (error) {
@@ -408,10 +533,15 @@ export const getAvailableTimeSlots = async (req, res) => {
       });
     }
 
-    // Get all time slots for the court
+    // Calculate day of week for the requested date (0 = Sunday, 1 = Monday, etc.)
+    const requestedDate = new Date(date);
+    const dayOfWeek = requestedDate.getDay();
+
+    // Get time slots for the court on the specific day of week
     const timeSlots = await prisma.timeSlot.findMany({
       where: {
         courtId: parseInt(courtId),
+        dayOfWeek: dayOfWeek,
         isAvailable: true,
       },
       orderBy: {
@@ -419,31 +549,66 @@ export const getAvailableTimeSlots = async (req, res) => {
       },
     });
 
-    // Get bookings for the specific date
+    // Get bookings for the specific date to check for conflicts
     const bookings = await prisma.booking.findMany({
       where: {
         courtId: parseInt(courtId),
-        date: new Date(date),
+        bookingDate: new Date(date),
         status: {
           in: ['confirmed', 'pending'],
         },
       },
       select: {
-        timeSlotId: true,
+        startTime: true,
+        endTime: true,
       },
     });
 
-    const bookedSlotIds = bookings.map((booking) => booking.timeSlotId);
+    // Filter out time slots that conflict with existing bookings
+    const availableSlots = timeSlots.filter((slot) => {
+      return !bookings.some((booking) => {
+        const slotStart = new Date(slot.startTime);
+        const slotEnd = new Date(slot.endTime);
+        const bookingStart = new Date(booking.startTime);
+        const bookingEnd = new Date(booking.endTime);
 
-    // Filter out booked time slots
-    const availableSlots = timeSlots.filter((slot) => !bookedSlotIds.includes(slot.id));
+        // Check for time overlap - use proper overlap detection
+        return slotStart < bookingEnd && slotEnd > bookingStart;
+      });
+    });
+
+    // Remove duplicate time slots (same start and end times)
+    const uniqueSlots = [];
+    const seenTimes = new Set();
+
+    for (const slot of availableSlots) {
+      const timeKey = `${slot.startTime.getTime()}-${slot.endTime.getTime()}`;
+      if (!seenTimes.has(timeKey)) {
+        seenTimes.add(timeKey);
+        uniqueSlots.push(slot);
+      }
+    }
 
     res.json({
       success: true,
       data: {
         date,
         courtId: parseInt(courtId),
-        availableSlots,
+        availableSlots: uniqueSlots.map((slot) => ({
+          id: slot.id,
+          dayOfWeek: slot.dayOfWeek,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          formattedStartTime: slot.startTime.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          formattedEndTime: slot.endTime.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          isAvailable: slot.isAvailable,
+        })),
       },
     });
   } catch (error) {
@@ -689,6 +854,91 @@ export const getVenueStatistics = async (req, res) => {
   }
 };
 
+// Submit a venue report
+export const submitVenueReport = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array(),
+      });
+    }
+
+    const { venueId, reason, description } = req.body;
+
+    // Check if venue exists and is approved
+    const venue = await prisma.venue.findFirst({
+      where: {
+        id: parseInt(venueId),
+        isApproved: true,
+      },
+    });
+
+    if (!venue) {
+      return res.status(404).json({
+        success: false,
+        message: 'Venue not found or not approved',
+      });
+    }
+
+    // Check if user already has a pending report for this venue
+    const existingReport = await prisma.report.findFirst({
+      where: {
+        userId: req.user.id,
+        venueId: parseInt(venueId),
+        status: 'pending',
+      },
+    });
+
+    if (existingReport) {
+      return res.status(400).json({
+        success: false,
+        message: 'You already have a pending report for this venue',
+      });
+    }
+
+    // Create the report
+    const report = await prisma.report.create({
+      data: {
+        userId: req.user.id,
+        venueId: parseInt(venueId),
+        reason,
+        description,
+        status: 'pending',
+      },
+      include: {
+        venue: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Report submitted successfully',
+      data: {
+        id: report.id,
+        reason: report.reason,
+        description: report.description,
+        venue_name: report.venue.name,
+        status: report.status,
+        created_at: report.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error('Submit venue report error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit report',
+      error: error.message,
+    });
+  }
+};
+
 // Get courts by sport type
 export const getCourtsBySport = async (req, res) => {
   try {
@@ -740,7 +990,7 @@ export const getCourtsBySport = async (req, res) => {
         const bookings = await prisma.booking.findMany({
           where: {
             courtId: court.id,
-            date: new Date(date),
+            bookingDate: new Date(date),
             status: {
               in: ['confirmed', 'pending'],
             },

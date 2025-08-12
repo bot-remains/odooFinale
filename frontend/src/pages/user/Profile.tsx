@@ -23,7 +23,7 @@ import {
   Star,
   X,
 } from "lucide-react";
-import { useBookings, useCancelBooking } from "@/services/bookingService";
+import { useUserBookings, useCancelBooking } from "@/services/bookingService";
 import { useCreateReview } from "@/services/reviewService";
 import {
   useUserProfile,
@@ -162,7 +162,7 @@ const UserProfile = () => {
   }, [user, authUser]);
 
   // Get real booking data from API - fetch more bookings for profile page
-  const { data: bookingsData, isLoading: bookingsLoading } = useBookings({
+  const { data: bookingsData, isLoading: bookingsLoading } = useUserBookings({
     limit: 100, // Increased limit to show more bookings in profile
     offset: 0,
   });

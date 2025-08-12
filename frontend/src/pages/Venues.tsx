@@ -639,6 +639,16 @@ const Venues = () => {
               </div>
             </div>
 
+            {/* Fallback Message */}
+            {venuesData?.fallbackMessage && (
+              <Alert className="mb-6 bg-blue-50 border-blue-200">
+                <AlertCircle className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-blue-800">
+                  {venuesData.fallbackMessage}
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Venues Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {venuesLoading ? (

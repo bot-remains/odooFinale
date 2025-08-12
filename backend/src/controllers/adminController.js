@@ -711,6 +711,235 @@ export const getChartData = async (req, res) => {
   }
 };
 
+// Get all venue reports for admin review
+export const getVenueReports = async (req, res) => {
+  try {
+    const {
+      status = 'all',
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      limit = 20,
+      offset = 0,
+    } = req.query;
+
+    // Build where conditions
+    const whereConditions = {};
+
+    if (status === 'pending') {
+      whereConditions.status = 'pending';
+    } else if (status === 'reviewed') {
+      whereConditions.status = 'reviewed';
+    } else if (status === 'resolved') {
+      whereConditions.status = 'resolved';
+    }
+
+    // Determine sort order
+    const validSortFields = ['createdAt', 'status', 'reason'];
+    const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
+    const order = sortOrder.toLowerCase() === 'asc' ? 'asc' : 'desc';
+
+    const reports = await prisma.report.findMany({
+      where: whereConditions,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        venue: {
+          select: {
+            id: true,
+            name: true,
+            location: true,
+            owner: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        reviewer: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: { [sortField]: order },
+      take: parseInt(limit),
+      skip: parseInt(offset),
+    });
+
+    const total = await prisma.report.count({
+      where: whereConditions,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        reports: reports.map((report) => ({
+          id: report.id,
+          reason: report.reason,
+          description: report.description,
+          status: report.status,
+          admin_notes: report.adminNotes,
+          created_at: report.createdAt,
+          reviewed_at: report.reviewedAt,
+          user: {
+            id: report.user.id,
+            name: report.user.name,
+            email: report.user.email,
+          },
+          venue: {
+            id: report.venue.id,
+            name: report.venue.name,
+            location: report.venue.location,
+            owner_name: report.venue.owner.name,
+            owner_email: report.venue.owner.email,
+          },
+          reviewed_by: report.reviewer?.name || null,
+        })),
+        pagination: {
+          total,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          hasNext: parseInt(offset) + parseInt(limit) < total,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Get venue reports error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch venue reports',
+      error: error.message,
+    });
+  }
+};
+
+// Update report status (review, resolve, etc.)
+export const updateReportStatus = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array(),
+      });
+    }
+
+    const { reportId } = req.params;
+    const { status, adminNotes } = req.body;
+
+    const report = await prisma.report.findUnique({
+      where: { id: parseInt(reportId) },
+    });
+
+    if (!report) {
+      return res.status(404).json({
+        success: false,
+        message: 'Report not found',
+      });
+    }
+
+    const validStatuses = ['pending', 'reviewed', 'resolved', 'dismissed'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Use: pending, reviewed, resolved, or dismissed',
+      });
+    }
+
+    await prisma.report.update({
+      where: { id: parseInt(reportId) },
+      data: {
+        status,
+        adminNotes,
+        reviewedAt: status !== 'pending' ? new Date() : null,
+        reviewedBy: status !== 'pending' ? req.user.id : null,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Report status updated successfully',
+    });
+  } catch (error) {
+    console.error('Update report status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update report status',
+      error: error.message,
+    });
+  }
+};
+
+// Get report statistics for dashboard
+export const getReportStats = async (req, res) => {
+  try {
+    const [totalReports, pendingReports, reviewedReports, resolvedReports, dismissedReports] =
+      await Promise.all([
+        prisma.report.count(),
+        prisma.report.count({ where: { status: 'pending' } }),
+        prisma.report.count({ where: { status: 'reviewed' } }),
+        prisma.report.count({ where: { status: 'resolved' } }),
+        prisma.report.count({ where: { status: 'dismissed' } }),
+      ]);
+
+    // Get reports by reason
+    const reportsByReason = await prisma.report.groupBy({
+      by: ['reason'],
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+    });
+
+    // Get recent reports
+    const recentReports = await prisma.report.findMany({
+      include: {
+        user: { select: { name: true } },
+        venue: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        stats: {
+          total_reports: totalReports,
+          pending_reports: pendingReports,
+          reviewed_reports: reviewedReports,
+          resolved_reports: resolvedReports,
+          dismissed_reports: dismissedReports,
+        },
+        reports_by_reason: reportsByReason.map((item) => ({
+          reason: item.reason,
+          count: item._count.id,
+        })),
+        recent_reports: recentReports.map((report) => ({
+          id: report.id,
+          reason: report.reason,
+          user_name: report.user.name,
+          venue_name: report.venue.name,
+          status: report.status,
+          created_at: report.createdAt,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('Get report stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch report statistics',
+      error: error.message,
+    });
+  }
+};
+
 // Helper function to get sport colors
 function getSportColor(sport) {
   const colors = {

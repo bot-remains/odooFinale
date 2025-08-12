@@ -2,6 +2,7 @@ import express from 'express';
 import { body, query, param } from 'express-validator';
 import {
   getUserNotifications,
+  getUnreadNotificationCount,
   markNotificationRead,
   markAllNotificationsRead,
   deleteNotification,
@@ -35,6 +36,9 @@ router.get(
   ],
   getUserNotifications
 );
+
+// Get unread notifications count
+router.get('/unread-count', getUnreadNotificationCount);
 
 // Mark notification as read
 router.patch('/:notificationId/read', [param('notificationId').isInt()], markNotificationRead);

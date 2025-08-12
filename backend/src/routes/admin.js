@@ -8,6 +8,9 @@ import {
   updateUserStatus,
   getSystemReports,
   getChartData,
+  getVenueReports,
+  updateReportStatus,
+  getReportStats,
 } from '../controllers/adminController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 
@@ -89,5 +92,32 @@ router.get(
   ],
   getSystemReports
 );
+
+// New venue reports endpoints
+router.get(
+  '/venue-reports',
+  [
+    query('status').optional().isIn(['pending', 'reviewed', 'resolved', 'dismissed', 'all']),
+    query('sortBy').optional().isIn(['createdAt', 'status', 'reason']),
+    query('sortOrder').optional().isIn(['asc', 'desc']),
+    query('limit').optional().isInt({ min: 1, max: 100 }),
+    query('offset').optional().isInt({ min: 0 }),
+  ],
+  getVenueReports
+);
+
+// Update venue report status
+router.patch(
+  '/venue-reports/:reportId/status',
+  [
+    param('reportId').isInt(),
+    body('status').isIn(['pending', 'reviewed', 'resolved', 'dismissed']),
+    body('adminNotes').optional().isString().trim().isLength({ max: 1000 }),
+  ],
+  updateReportStatus
+);
+
+// Get venue report statistics
+router.get('/venue-reports/stats', getReportStats);
 
 export default router;

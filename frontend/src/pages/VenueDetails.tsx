@@ -15,19 +15,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { 
-  MapPin, 
-  Star, 
-  Clock, 
-  Phone, 
-  Mail, 
-  Wifi, 
-  Car, 
-  Coffee, 
-  Shield, 
-  Heart, 
-  Flag, 
-  Users, 
+import {
+  MapPin,
+  Star,
+  Clock,
+  Phone,
+  Mail,
+  Wifi,
+  Car,
+  Coffee,
+  Shield,
+  Heart,
+  Flag,
+  Users,
   Calendar,
   MapIcon,
   MessageSquare,
@@ -39,7 +39,8 @@ import {
   ExternalLink,
   Play,
   Image as ImageIcon,
-  X
+  X,
+  AlertTriangle,
 } from "lucide-react";
 import { useVenueDetails, useSportPricing } from "@/services/venueService";
 import { useVenueReviews, useCreateReview } from "@/services/reviewService";
@@ -53,7 +54,7 @@ const VenueDetails = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  
+
   // State management
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showAllReviews, setShowAllReviews] = useState(false);
@@ -62,12 +63,17 @@ const VenueDetails = () => {
   const [reviewComment, setReviewComment] = useState("");
   const [selectedSport, setSelectedSport] = useState<string | null>(null);
   const [showSportModal, setShowSportModal] = useState(false);
-  
+
   // API calls
-  const { data: venue, isLoading: venueLoading, error: venueError } = useVenueDetails(venueId);
-  const { data: reviewsData, isLoading: reviewsLoading } = useVenueReviews(venueId);
+  const {
+    data: venue,
+    isLoading: venueLoading,
+    error: venueError,
+  } = useVenueDetails(venueId);
+  const { data: reviewsData, isLoading: reviewsLoading } =
+    useVenueReviews(venueId);
   const { data: sportPricing, isLoading: pricingLoading } = useSportPricing(
-    venueId, 
+    venueId,
     selectedSport || ""
   );
   const createReviewMutation = useCreateReview();
@@ -85,11 +91,27 @@ const VenueDetails = () => {
       toast({
         title: "Login Required",
         description: "Please login to book a venue",
-        variant: "destructive"
+        variant: "destructive",
       });
       return;
     }
-    // Navigate to booking page with venue ID
+
+    // Check if venue has courts available
+    if (venue?.courts && venue.courts.length > 0) {
+      // Scroll to courts section
+      const courtsSection = document.querySelector("[data-courts-section]");
+      if (courtsSection) {
+        courtsSection.scrollIntoView({ behavior: "smooth" });
+        toast({
+          title: "Select a Court",
+          description:
+            "Please choose a court from the available options below.",
+        });
+        return;
+      }
+    }
+
+    // Navigate to generic booking page if no courts
     navigate(`/booking/${venueId}`);
   };
 
@@ -99,7 +121,7 @@ const VenueDetails = () => {
       toast({
         title: "Login Required",
         description: "Please login to submit a review",
-        variant: "destructive"
+        variant: "destructive",
       });
       return;
     }
@@ -109,14 +131,14 @@ const VenueDetails = () => {
         venueId,
         rating: reviewRating,
         comment: reviewComment,
-        bookingId: 1 // You may need to get this from somewhere
+        bookingId: 1, // You may need to get this from somewhere
       });
-      
+
       toast({
         title: "Review Submitted",
-        description: "Thank you for your feedback!"
+        description: "Thank you for your feedback!",
       });
-      
+
       setShowReviewForm(false);
       setReviewComment("");
       setReviewRating(5);
@@ -124,12 +146,16 @@ const VenueDetails = () => {
       toast({
         title: "Error",
         description: "Failed to submit review. Please try again.",
-        variant: "destructive"
+        variant: "destructive",
       });
     }
   };
 
-  const renderStars = (rating: number, interactive = false, onRatingChange?: (rating: number) => void) => {
+  const renderStars = (
+    rating: number,
+    interactive = false,
+    onRatingChange?: (rating: number) => void
+  ) => {
     return (
       <div className="flex items-center gap-1">
         {[1, 2, 3, 4, 5].map((star) => (
@@ -139,8 +165,14 @@ const VenueDetails = () => {
               star <= rating
                 ? "fill-yellow-400 text-yellow-400"
                 : "fill-gray-200 text-gray-200"
-            } ${interactive ? "cursor-pointer hover:scale-110 transition-transform" : ""}`}
-            onClick={() => interactive && onRatingChange && onRatingChange(star)}
+            } ${
+              interactive
+                ? "cursor-pointer hover:scale-110 transition-transform"
+                : ""
+            }`}
+            onClick={() =>
+              interactive && onRatingChange && onRatingChange(star)
+            }
           />
         ))}
       </div>
@@ -155,7 +187,9 @@ const VenueDetails = () => {
 
   const prevImage = () => {
     if (venue?.photos && venue.photos.length > 0) {
-      setCurrentImageIndex((prev) => (prev - 1 + venue.photos.length) % venue.photos.length);
+      setCurrentImageIndex(
+        (prev) => (prev - 1 + venue.photos.length) % venue.photos.length
+      );
     }
   };
 
@@ -185,15 +219,18 @@ const VenueDetails = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <SEO 
-        title={`${venue.name} - QuickCourt`} 
-        description={`Book ${venue.name} at ${venue.location}. Rating: ${venue.rating}/5 with ${venue.totalReviews} reviews.`} 
+      <SEO
+        title={`${venue.name} - QuickCourt`}
+        description={`Book ${venue.name} at ${venue.location}. Rating: ${venue.rating}/5 with ${venue.totalReviews} reviews.`}
       />
-      
+
       <div className="container mx-auto px-4 py-6 max-w-7xl">
         {/* Back Navigation */}
         <div className="mb-6">
-          <Link to="/venues" className="inline-flex items-center text-gray-600 hover:text-gray-900">
+          <Link
+            to="/venues"
+            className="inline-flex items-center text-gray-600 hover:text-gray-900"
+          >
             <ChevronLeft className="w-4 h-4 mr-1" />
             Back to Venues
           </Link>
@@ -203,7 +240,9 @@ const VenueDetails = () => {
         <div className="mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{venue.name}</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                {venue.name}
+              </h1>
               <div className="flex items-center gap-4 text-gray-600">
                 <div className="flex items-center gap-1">
                   <MapPin className="w-4 h-4" />
@@ -229,8 +268,8 @@ const VenueDetails = () => {
                 <div className="relative">
                   <div className="aspect-video bg-gray-200 rounded-t-lg overflow-hidden">
                     {venue.photos && venue.photos.length > 0 ? (
-                      <img 
-                        src={venue.photos[currentImageIndex]} 
+                      <img
+                        src={venue.photos[currentImageIndex]}
                         alt={`${venue.name} - Image ${currentImageIndex + 1}`}
                         className="w-full h-full object-cover"
                       />
@@ -242,7 +281,7 @@ const VenueDetails = () => {
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Navigation Arrows */}
                     {venue.photos && venue.photos.length > 1 && (
                       <>
@@ -261,14 +300,14 @@ const VenueDetails = () => {
                       </>
                     )}
                   </div>
-                  
+
                   {/* Image Counter */}
                   {venue.photos && venue.photos.length > 1 && (
                     <div className="absolute bottom-4 right-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
                       {currentImageIndex + 1} / {venue.photos.length}
                     </div>
                   )}
-                  
+
                   {/* Media Type Indicator */}
                   <div className="absolute top-4 left-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2">
                     <ImageIcon className="w-4 h-4" />
@@ -278,39 +317,130 @@ const VenueDetails = () => {
               </CardContent>
             </Card>
 
-            {/* Available Sports */}
-            <Card>
+            {/* Available Courts */}
+            <Card data-courts-section>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Users className="w-5 h-5" />
-                  Available Sports
+                  Available Courts
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {venue.available_sports && venue.available_sports.length > 0 ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {venue.available_sports.map((sport, index) => (
-                      <div 
-                        key={index} 
-                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-green-50 hover:border-green-200 border-2 border-transparent transition-all"
-                        onClick={() => handleSportClick(sport)}
+                {venue.courts && venue.courts.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {venue.courts.map((court) => (
+                      <div
+                        key={court.id}
+                        className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border hover:border-green-200 hover:bg-green-50 transition-all"
                       >
-                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                          <span className="text-lg">
-                            {sport.toLowerCase() === 'badminton' ? '🏸' :
-                             sport.toLowerCase() === 'tennis' ? '🎾' :
-                             sport.toLowerCase() === 'football' ? '⚽' :
-                             sport.toLowerCase() === 'cricket' || sport.toLowerCase().includes('cricket') ? '🏏' :
-                             sport.toLowerCase() === 'swimming' ? '🏊' :
-                             sport.toLowerCase() === 'table tennis' ? '🏓' : '🏟️'}
-                          </span>
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                            <span className="text-lg">
+                              {court.sportType.toLowerCase() === "badminton"
+                                ? "🏸"
+                                : court.sportType.toLowerCase() === "tennis"
+                                ? "🎾"
+                                : court.sportType.toLowerCase() === "football"
+                                ? "⚽"
+                                : court.sportType.toLowerCase() === "cricket" ||
+                                  court.sportType
+                                    .toLowerCase()
+                                    .includes("cricket")
+                                ? "🏏"
+                                : court.sportType.toLowerCase() === "swimming"
+                                ? "🏊"
+                                : court.sportType.toLowerCase() ===
+                                  "table tennis"
+                                ? "🏓"
+                                : "🏟️"}
+                            </span>
+                          </div>
+                          <div>
+                            <h3 className="font-semibold">{court.name}</h3>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="text-xs">
+                                {court.sportType}
+                              </Badge>
+                              <span className="text-sm text-green-600 font-medium">
+                                ₹{court.pricePerHour}/hr
+                              </span>
+                            </div>
+                            {court.description && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                {court.description}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <span className="font-medium capitalize">{sport}</span>
+                        <div className="flex flex-col gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() =>
+                              navigate(
+                                `/booking/court?venueId=${venueId}&courtId=${court.id}`
+                              )
+                            }
+                          >
+                            Book Court
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSportClick(court.sportType)}
+                          >
+                            View Pricing
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
+                ) : venue.available_sports &&
+                  venue.available_sports.length > 0 ? (
+                  <div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                      {venue.available_sports.map((sport, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-green-50 hover:border-green-200 border-2 border-transparent transition-all"
+                          onClick={() => handleSportClick(sport)}
+                        >
+                          <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                            <span className="text-lg">
+                              {sport.toLowerCase() === "badminton"
+                                ? "🏸"
+                                : sport.toLowerCase() === "tennis"
+                                ? "🎾"
+                                : sport.toLowerCase() === "football"
+                                ? "⚽"
+                                : sport.toLowerCase() === "cricket" ||
+                                  sport.toLowerCase().includes("cricket")
+                                ? "🏏"
+                                : sport.toLowerCase() === "swimming"
+                                ? "🏊"
+                                : sport.toLowerCase() === "table tennis"
+                                ? "🏓"
+                                : "🏟️"}
+                            </span>
+                          </div>
+                          <span className="font-medium capitalize">
+                            {sport}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        No courts are currently set up for this venue. Please
+                        contact the venue directly.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
                 ) : (
-                  <p className="text-gray-500">No sports information available</p>
+                  <p className="text-gray-500">
+                    No courts information available
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -321,8 +451,8 @@ const VenueDetails = () => {
                 <DialogHeader>
                   <DialogTitle className="flex items-center justify-between">
                     <span className="capitalize">{selectedSport}</span>
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       size="sm"
                       onClick={() => setShowSportModal(false)}
                     >
@@ -330,7 +460,7 @@ const VenueDetails = () => {
                     </Button>
                   </DialogTitle>
                 </DialogHeader>
-                
+
                 {pricingLoading ? (
                   <div className="text-center py-4">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
@@ -340,60 +470,78 @@ const VenueDetails = () => {
                   <div className="space-y-4">
                     <Alert>
                       <AlertDescription>
-                        Pricing is subjected to change and is controlled by venue
+                        Pricing is subjected to change and is controlled by
+                        venue
                       </AlertDescription>
                     </Alert>
-                    
+
                     <div className="space-y-4">
                       <div>
                         <h3 className="font-semibold text-lg mb-2">
                           {sportPricing.name}
                         </h3>
                       </div>
-                      
+
                       {/* Monday - Friday */}
                       <div>
-                        <h4 className="font-medium text-gray-700 mb-2">Monday - Friday</h4>
+                        <h4 className="font-medium text-gray-700 mb-2">
+                          Monday - Friday
+                        </h4>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center">
-                            <span>INR {sportPricing.weekdays.morning.price}.0 / hour</span>
+                            <span>
+                              INR {sportPricing.weekdays.morning.price}.0 / hour
+                            </span>
                             <span className="text-sm text-gray-600">
                               {sportPricing.weekdays.morning.time}
                             </span>
                           </div>
                           {sportPricing.weekdays.afternoon && (
                             <div className="flex justify-between items-center">
-                              <span>INR {sportPricing.weekdays.afternoon.price}.0 / hour</span>
+                              <span>
+                                INR {sportPricing.weekdays.afternoon.price}.0 /
+                                hour
+                              </span>
                               <span className="text-sm text-gray-600">
                                 {sportPricing.weekdays.afternoon.time}
                               </span>
                             </div>
                           )}
                           <div className="flex justify-between items-center">
-                            <span>INR {sportPricing.weekdays.evening.price}.0 / hour</span>
+                            <span>
+                              INR {sportPricing.weekdays.evening.price}.0 / hour
+                            </span>
                             <span className="text-sm text-gray-600">
                               {sportPricing.weekdays.evening.time}
                             </span>
                           </div>
                         </div>
                       </div>
-                      
+
                       {/* Saturday - Sunday */}
                       <div>
-                        <h4 className="font-medium text-gray-700 mb-2">Saturday - Sunday</h4>
+                        <h4 className="font-medium text-gray-700 mb-2">
+                          Saturday - Sunday
+                        </h4>
                         <div className="flex justify-between items-center">
-                          <span>INR {sportPricing.weekend.allDay.price}.0 / hour</span>
+                          <span>
+                            INR {sportPricing.weekend.allDay.price}.0 / hour
+                          </span>
                           <span className="text-sm text-gray-600">
                             {sportPricing.weekend.allDay.time}
                           </span>
                         </div>
                       </div>
-                      
+
                       {/* Holiday(s) */}
                       <div>
-                        <h4 className="font-medium text-gray-700 mb-2">Holiday(s)</h4>
+                        <h4 className="font-medium text-gray-700 mb-2">
+                          Holiday(s)
+                        </h4>
                         <div className="flex justify-between items-center">
-                          <span>INR {sportPricing.holiday.allDay.price}.0 / hour</span>
+                          <span>
+                            INR {sportPricing.holiday.allDay.price}.0 / hour
+                          </span>
                           <span className="text-sm text-gray-600">
                             {sportPricing.holiday.allDay.time}
                           </span>
@@ -423,15 +571,28 @@ const VenueDetails = () => {
                     {venue.amenities.map((amenity, index) => {
                       const getAmenityIcon = (name: string) => {
                         const lowerName = name.toLowerCase();
-                        if (lowerName.includes('parking')) return <Car className="w-4 h-4" />;
-                        if (lowerName.includes('wifi')) return <Wifi className="w-4 h-4" />;
-                        if (lowerName.includes('coffee') || lowerName.includes('cafe')) return <Coffee className="w-4 h-4" />;
-                        if (lowerName.includes('cctv') || lowerName.includes('security')) return <Shield className="w-4 h-4" />;
+                        if (lowerName.includes("parking"))
+                          return <Car className="w-4 h-4" />;
+                        if (lowerName.includes("wifi"))
+                          return <Wifi className="w-4 h-4" />;
+                        if (
+                          lowerName.includes("coffee") ||
+                          lowerName.includes("cafe")
+                        )
+                          return <Coffee className="w-4 h-4" />;
+                        if (
+                          lowerName.includes("cctv") ||
+                          lowerName.includes("security")
+                        )
+                          return <Shield className="w-4 h-4" />;
                         return <Shield className="w-4 h-4" />;
                       };
 
                       return (
-                        <div key={index} className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
+                        <div
+                          key={index}
+                          className="flex items-center gap-2 p-2 bg-green-50 rounded-lg"
+                        >
                           <div className="text-green-600">
                             {getAmenityIcon(amenity)}
                           </div>
@@ -441,7 +602,9 @@ const VenueDetails = () => {
                     })}
                   </div>
                 ) : (
-                  <p className="text-gray-500">No amenities information available</p>
+                  <p className="text-gray-500">
+                    No amenities information available
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -454,9 +617,13 @@ const VenueDetails = () => {
               <CardContent>
                 <div className="prose prose-gray max-w-none">
                   {venue.description ? (
-                    <p className="text-gray-700 leading-relaxed">{venue.description}</p>
+                    <p className="text-gray-700 leading-relaxed">
+                      {venue.description}
+                    </p>
                   ) : (
-                    <p className="text-gray-500">No description available for this venue.</p>
+                    <p className="text-gray-500">
+                      No description available for this venue.
+                    </p>
                   )}
                 </div>
               </CardContent>
@@ -470,8 +637,8 @@ const VenueDetails = () => {
                     <MessageSquare className="w-5 h-5" />
                     Player Reviews & Ratings
                   </div>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={() => setShowReviewForm(true)}
                     disabled={!user}
@@ -501,14 +668,17 @@ const VenueDetails = () => {
                           />
                         </div>
                         <div className="flex gap-2">
-                          <Button type="submit" disabled={createReviewMutation.isPending}>
+                          <Button
+                            type="submit"
+                            disabled={createReviewMutation.isPending}
+                          >
                             {createReviewMutation.isPending ? (
                               <Loader2 className="w-4 h-4 animate-spin mr-2" />
                             ) : null}
                             Submit Review
                           </Button>
-                          <Button 
-                            type="button" 
+                          <Button
+                            type="button"
                             variant="outline"
                             onClick={() => setShowReviewForm(false)}
                           >
@@ -529,20 +699,31 @@ const VenueDetails = () => {
                 ) : displayedReviews.length > 0 ? (
                   <div className="space-y-4">
                     {displayedReviews.map((review: Review) => (
-                      <div key={review.id} className="border rounded-lg p-4 bg-gray-50">
+                      <div
+                        key={review.id}
+                        className="border rounded-lg p-4 bg-gray-50"
+                      >
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
                               <span className="text-sm font-medium">
-                                {(review.user_name || review.user?.name)?.charAt(0).toUpperCase() || 'U'}
+                                {(review.user_name || review.user?.name)
+                                  ?.charAt(0)
+                                  .toUpperCase() || "U"}
                               </span>
                             </div>
                             <div>
-                              <p className="font-medium">{review.user_name || review.user?.name || 'Anonymous'}</p>
+                              <p className="font-medium">
+                                {review.user_name ||
+                                  review.user?.name ||
+                                  "Anonymous"}
+                              </p>
                               <div className="flex items-center gap-2">
                                 {renderStars(review.rating)}
                                 <span className="text-sm text-gray-500">
-                                  {new Date(review.created_at || review.createdAt).toLocaleDateString()}
+                                  {new Date(
+                                    review.created_at || review.createdAt
+                                  ).toLocaleDateString()}
                                 </span>
                               </div>
                             </div>
@@ -553,12 +734,12 @@ const VenueDetails = () => {
                         )}
                       </div>
                     ))}
-                    
+
                     {/* Load More Button */}
                     {reviews.length > 5 && !showAllReviews && (
                       <div className="text-center">
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           onClick={() => setShowAllReviews(true)}
                         >
                           Load More Reviews ({reviews.length - 5} more)
@@ -581,13 +762,20 @@ const VenueDetails = () => {
             {/* Book This Venue */}
             <Card className="sticky top-6">
               <CardContent className="p-6">
-                <div className="text-center space-y-4"> 
-                  <Button 
+                <div className="text-center space-y-4">
+                  <Button
                     className="w-full bg-green-600 hover:bg-green-700 text-white"
                     onClick={handleBookVenue}
                   >
-                    Book This Venue
+                    {venue?.courts && venue.courts.length > 0
+                      ? "Select Court to Book"
+                      : "Book This Venue"}
                   </Button>
+                  {venue?.courts && venue.courts.length > 0 && (
+                    <p className="text-sm text-gray-500">
+                      {venue.courts.length} courts available
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -603,12 +791,18 @@ const VenueDetails = () => {
               <CardContent>
                 {venue.operatingHours ? (
                   <div className="space-y-2">
-                    {Object.entries(venue.operatingHours).map(([day, hours]) => (
-                      <div key={day} className="flex justify-between">
-                        <span className="capitalize">{day}</span>
-                        <span className="text-gray-600">{typeof hours === 'string' ? hours : `${hours.open} - ${hours.close}`}</span>
-                      </div>
-                    ))}
+                    {Object.entries(venue.operatingHours).map(
+                      ([day, hours]) => (
+                        <div key={day} className="flex justify-between">
+                          <span className="capitalize">{day}</span>
+                          <span className="text-gray-600">
+                            {typeof hours === "string"
+                              ? hours
+                              : `${hours.open} - ${hours.close}`}
+                          </span>
+                        </div>
+                      )
+                    )}
                   </div>
                 ) : (
                   <p className="text-gray-600">7:00AM - 11:00PM</p>

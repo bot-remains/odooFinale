@@ -28,10 +28,8 @@ import {
   Search,
   Filter,
 } from "lucide-react";
-import SEO from "@/components/SEO";
-import PageHeader from "@/components/common/PageHeader";
 
-const ReportsModeration: React.FC = () => {
+const VenueReports: React.FC = () => {
   const { toast } = useToast();
   const [filters, setFilters] = useState({
     status: "all" as VenueReportStatus | "all",
@@ -137,14 +135,12 @@ const ReportsModeration: React.FC = () => {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <SEO
-          title="Venue Reports - Admin"
-          description="Manage venue reports submitted by users"
-        />
-        <PageHeader
-          title="Venue Reports"
-          subtitle="Manage venue reports submitted by users"
-        />
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Venue Reports</h1>
+          <p className="text-muted-foreground">
+            Manage venue reports submitted by users
+          </p>
+        </div>
         <div className="grid grid-cols-1 gap-4">
           {[...Array(5)].map((_, i) => (
             <Card key={i} className="animate-pulse">
@@ -164,37 +160,25 @@ const ReportsModeration: React.FC = () => {
 
   if (error) {
     return (
-      <div className="space-y-6">
-        <SEO
-          title="Venue Reports - Admin"
-          description="Manage venue reports submitted by users"
-        />
-        <PageHeader
-          title="Venue Reports"
-          subtitle="Manage venue reports submitted by users"
-        />
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>
-            Failed to load venue reports. Please try again.
-          </AlertDescription>
-        </Alert>
-      </div>
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>
+          Failed to load venue reports. Please try again.
+        </AlertDescription>
+      </Alert>
     );
   }
 
   return (
     <div className="space-y-6">
-      <SEO
-        title="Venue Reports - Admin"
-        description="Manage venue reports submitted by users"
-      />
-
-      <PageHeader
-        title="Venue Reports"
-        subtitle="Manage venue reports submitted by users"
-      />
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Venue Reports</h1>
+        <p className="text-muted-foreground">
+          Manage venue reports submitted by users
+        </p>
+      </div>
 
       {/* Stats Cards */}
       {stats && (
@@ -373,21 +357,8 @@ const ReportsModeration: React.FC = () => {
         ))}
       </div>
 
-      {/* Empty State */}
-      {reportsData?.items.length === 0 && (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No reports found</h3>
-            <p className="text-muted-foreground">
-              There are no venue reports matching your filters.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Pagination */}
-      {reportsData && reportsData.items.length > 0 && (
+      {reportsData && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
             Showing {page * limit + 1} to{" "}
@@ -480,4 +451,4 @@ const ReportsModeration: React.FC = () => {
   );
 };
 
-export default ReportsModeration;
+export default VenueReports;
